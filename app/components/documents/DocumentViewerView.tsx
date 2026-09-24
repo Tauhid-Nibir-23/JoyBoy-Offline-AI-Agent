@@ -14,15 +14,21 @@ import {
   RefreshCw,
   Layers,
   BookOpen,
-  ChevronRight
+  ChevronRight,
+  Sparkles,
+  ChevronDown,
+  Lightbulb,
+  Award
 } from 'lucide-react';
 import { DocumentRecord } from '../../../documents/types';
 import { DocumentChunk } from '../../../documents/chunking/types';
 import { chunkService } from '../../../documents/chunking/chunkService';
+import { StudyActionType } from '../../../study/types';
 
 interface DocumentViewerViewProps {
   document: DocumentRecord;
   onBack: () => void;
+  onStudyAction?: (docId: string, action: StudyActionType) => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -41,7 +47,7 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document: doc, onBack }) => {
+export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document: doc, onBack, onStudyAction }) => {
   const [activeTab, setActiveTab] = useState<'text' | 'chunks'>('text');
   const [chunks, setChunks] = useState<DocumentChunk[]>([]);
   const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
@@ -51,6 +57,7 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
   const [copiedChunkText, setCopiedChunkText] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [showStudyMenu, setShowStudyMenu] = useState(false);
 
   const textContent = doc.extracted_text || '';
 
@@ -244,6 +251,177 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
             {copied ? <Check size={15} /> : <Copy size={15} />}
             {copied ? 'Copied Text' : 'Copy Extracted Text'}
           </button>
+
+          {/* Study with AI Dropdown */}
+          <div style={{ position: 'relative' }}>
+            <button
+              onClick={() => setShowStudyMenu(prev => !prev)}
+              disabled={!textContent}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#f59e0b',
+                color: '#0f172a',
+                border: 'none',
+                padding: '7px 14px',
+                borderRadius: '6px',
+                cursor: textContent ? 'pointer' : 'not-allowed',
+                fontSize: '13px',
+                fontWeight: 700,
+                opacity: textContent ? 1 : 0.5
+              }}
+            >
+              <Sparkles size={15} />
+              <span>Study with AI</span>
+              <ChevronDown size={14} />
+            </button>
+
+            {showStudyMenu && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: '100%',
+                  marginTop: '6px',
+                  background: '#1e293b',
+                  border: '1px solid #334155',
+                  borderRadius: '8px',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+                  zIndex: 50,
+                  width: '210px',
+                  overflow: 'hidden'
+                }}
+              >
+                <div style={{ padding: '6px' }}>
+                  <button
+                    onClick={() => {
+                      setShowStudyMenu(false);
+                      onStudyAction?.(doc.id, 'explain');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      borderRadius: '5px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <Lightbulb size={15} style={{ color: '#ec4899' }} /> Explain this document
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowStudyMenu(false);
+                      onStudyAction?.(doc.id, 'summarize');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      borderRadius: '5px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <FileText size={15} style={{ color: '#10b981' }} /> Summarize this document
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowStudyMenu(false);
+                      onStudyAction?.(doc.id, 'notes');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      borderRadius: '5px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <BookOpen size={15} style={{ color: '#a855f7' }} /> Make notes
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowStudyMenu(false);
+                      onStudyAction?.(doc.id, 'quiz');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      borderRadius: '5px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <Award size={15} style={{ color: '#f59e0b' }} /> Generate quiz / MCQ
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowStudyMenu(false);
+                      onStudyAction?.(doc.id, 'flashcards');
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#f8fafc',
+                      fontSize: '13px',
+                      textAlign: 'left',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      cursor: 'pointer',
+                      borderRadius: '5px'
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#334155')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <Layers size={15} style={{ color: '#3b82f6' }} /> Generate flashcards
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

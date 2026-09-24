@@ -61,6 +61,64 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
 
+-- Phase 5 Study Features Tables
+CREATE TABLE IF NOT EXISTS study_sessions (
+    id TEXT PRIMARY KEY,
+    session_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    document_id TEXT,
+    document_name TEXT,
+    data_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS study_items (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    content_json TEXT NOT NULL,
+    metadata_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quizzes (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    topic TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    question_count INTEGER NOT NULL,
+    questions_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS flashcards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    topic TEXT NOT NULL,
+    card_count INTEGER NOT NULL,
+    cards_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS study_plans (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    subject TEXT NOT NULL,
+    days INTEGER NOT NULL,
+    hours_per_day REAL NOT NULL,
+    plan_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_sessions_type ON study_sessions(session_type);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_created ON study_sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_quizzes_session ON quizzes(session_id);
+CREATE INDEX IF NOT EXISTS idx_flashcards_session ON flashcards(session_id);
+CREATE INDEX IF NOT EXISTS idx_study_plans_session ON study_plans(session_id);
+
 -- Default Settings Insertions
 INSERT OR IGNORE INTO settings (key, value) VALUES 
 ('app_name', 'Offline Study AI'),
@@ -71,3 +129,4 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
 ('cpu_threads', '4'),
 ('theme', 'dark'),
 ('offline_mode', 'true');
+

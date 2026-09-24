@@ -65,6 +65,56 @@ export interface DBDocumentChunk {
   created_at?: string;
 }
 
+export interface DBStudySession {
+  id: string;
+  session_type: string;
+  title: string;
+  topic: string;
+  document_id: string | null;
+  document_name: string | null;
+  data_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DBStudyItem {
+  id: string;
+  session_id: string;
+  item_type: string;
+  content_json: string;
+  metadata_json?: string | null;
+  created_at: string;
+}
+
+export interface DBQuiz {
+  id: string;
+  session_id: string | null;
+  topic: string;
+  difficulty: string;
+  question_count: number;
+  questions_json: string;
+  created_at: string;
+}
+
+export interface DBFlashcard {
+  id: string;
+  session_id: string | null;
+  topic: string;
+  card_count: number;
+  cards_json: string;
+  created_at: string;
+}
+
+export interface DBStudyPlan {
+  id: string;
+  session_id: string | null;
+  subject: string;
+  days: number;
+  hours_per_day: number;
+  plan_json: string;
+  created_at: string;
+}
+
 const INITIAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -126,6 +176,63 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
+
+CREATE TABLE IF NOT EXISTS study_sessions (
+    id TEXT PRIMARY KEY,
+    session_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    topic TEXT NOT NULL,
+    document_id TEXT,
+    document_name TEXT,
+    data_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS study_items (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    item_type TEXT NOT NULL,
+    content_json TEXT NOT NULL,
+    metadata_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS quizzes (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    topic TEXT NOT NULL,
+    difficulty TEXT NOT NULL,
+    question_count INTEGER NOT NULL,
+    questions_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS flashcards (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    topic TEXT NOT NULL,
+    card_count INTEGER NOT NULL,
+    cards_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS study_plans (
+    id TEXT PRIMARY KEY,
+    session_id TEXT,
+    subject TEXT NOT NULL,
+    days INTEGER NOT NULL,
+    hours_per_day REAL NOT NULL,
+    plan_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_sessions_type ON study_sessions(session_type);
+CREATE INDEX IF NOT EXISTS idx_study_sessions_created ON study_sessions(created_at);
+CREATE INDEX IF NOT EXISTS idx_quizzes_session ON quizzes(session_id);
+CREATE INDEX IF NOT EXISTS idx_flashcards_session ON flashcards(session_id);
+CREATE INDEX IF NOT EXISTS idx_study_plans_session ON study_plans(session_id);
 
 INSERT OR IGNORE INTO settings (key, value) VALUES 
 ('app_name', 'Offline Study AI'),
@@ -210,11 +317,63 @@ export async function initDatabase(): Promise<boolean> {
       try { dbInstance.run("ALTER TABLE documents ADD COLUMN indexing_status TEXT DEFAULT 'Ready';"); } catch (_) {}
       try { dbInstance.run('ALTER TABLE documents ADD COLUMN indexed_at TIMESTAMP;'); } catch (_) {}
       try { dbInstance.run('ALTER TABLE document_chunks ADD COLUMN embedding_json TEXT;'); } catch (_) {}
+      try {
+        dbInstance.run(`
+          CREATE TABLE IF NOT EXISTS study_sessions (
+              id TEXT PRIMARY KEY,
+              session_type TEXT NOT NULL,
+              title TEXT NOT NULL,
+              topic TEXT NOT NULL,
+              document_id TEXT,
+              document_name TEXT,
+              data_json TEXT NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS study_items (
+              id TEXT PRIMARY KEY,
+              session_id TEXT NOT NULL,
+              item_type TEXT NOT NULL,
+              content_json TEXT NOT NULL,
+              metadata_json TEXT,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+          );
+          CREATE TABLE IF NOT EXISTS quizzes (
+              id TEXT PRIMARY KEY,
+              session_id TEXT,
+              topic TEXT NOT NULL,
+              difficulty TEXT NOT NULL,
+              question_count INTEGER NOT NULL,
+              questions_json TEXT NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS flashcards (
+              id TEXT PRIMARY KEY,
+              session_id TEXT,
+              topic TEXT NOT NULL,
+              card_count INTEGER NOT NULL,
+              cards_json TEXT NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE TABLE IF NOT EXISTS study_plans (
+              id TEXT PRIMARY KEY,
+              session_id TEXT,
+              subject TEXT NOT NULL,
+              days INTEGER NOT NULL,
+              hours_per_day REAL NOT NULL,
+              plan_json TEXT NOT NULL,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE INDEX IF NOT EXISTS idx_study_sessions_type ON study_sessions(session_type);
+          CREATE INDEX IF NOT EXISTS idx_study_sessions_created ON study_sessions(created_at);
+        `);
+      } catch (_) {}
 
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
-      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks'];
+      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks', 'study_sessions'];
       const missing = requiredTables.filter((t) => !tables.includes(t));
       if (missing.length > 0) {
         throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
@@ -437,7 +596,7 @@ export function getDocumentByHash(fileHash: string): DBDocument | null {
   };
 }
 
-export function insertDocumentInDB(doc: DBDocument): DBDocument {
+export function insertDocumentInDB(doc: Partial<DBDocument> & { id: string; filename: string }): DBDocument {
   executeQuery(
     `INSERT INTO documents (
       id, filename, original_path, file_type, file_size, file_hash,
@@ -447,21 +606,21 @@ export function insertDocumentInDB(doc: DBDocument): DBDocument {
     [
       doc.id,
       doc.filename,
-      doc.original_path,
-      doc.file_type,
-      doc.file_size,
-      doc.file_hash,
-      doc.imported_at,
-      doc.modified_at,
-      doc.extraction_status,
-      doc.extracted_text,
-      doc.character_count,
+      doc.original_path || null,
+      doc.file_type || 'txt',
+      doc.file_size || 0,
+      doc.file_hash || ('hash_' + Date.now()),
+      doc.imported_at || new Date().toISOString(),
+      doc.modified_at || null,
+      doc.extraction_status || 'Ready',
+      doc.extracted_text || null,
+      doc.character_count || 0,
       doc.indexing_status || 'Ready',
       doc.indexed_at || null,
-      doc.error_message
+      doc.error_message || null
     ]
   );
-  return doc;
+  return doc as DBDocument;
 }
 
 export function updateDocumentInDB(id: string, updates: Partial<DBDocument>): void {
@@ -546,9 +705,9 @@ export function insertChunkInDB(chunk: DBDocumentChunk): DBDocumentChunk {
       chunk.end_offset,
       chunk.character_count,
       chunk.token_estimate,
-      chunk.heading,
-      chunk.page_number,
-      chunk.metadata_json,
+      chunk.heading || null,
+      chunk.page_number || null,
+      chunk.metadata_json || null,
       chunk.embedding_json || null
     ]
   );
@@ -720,6 +879,194 @@ export function getChunkCountByDocumentId(documentId: string): number {
     return 0;
   }
 }
+
+// ==========================================
+// Phase 5 Study Features SQLite Helpers
+// ==========================================
+
+export function saveStudySessionInDB(session: DBStudySession): void {
+  const now = new Date().toISOString();
+  executeQuery(
+    `INSERT INTO study_sessions (id, session_type, title, topic, document_id, document_name, data_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET 
+       title = excluded.title,
+       topic = excluded.topic,
+       document_id = excluded.document_id,
+       document_name = excluded.document_name,
+       data_json = excluded.data_json,
+       updated_at = excluded.updated_at`,
+    [
+      session.id,
+      session.session_type,
+      session.title,
+      session.topic,
+      session.document_id || null,
+      session.document_name || null,
+      session.data_json,
+      session.created_at || now,
+      session.updated_at || now
+    ]
+  );
+}
+
+export function getAllStudySessionsFromDB(): DBStudySession[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery('SELECT * FROM study_sessions ORDER BY created_at DESC');
+  return rows.map((r) => ({
+    id: String(r.id),
+    session_type: String(r.session_type),
+    title: String(r.title),
+    topic: String(r.topic),
+    document_id: r.document_id ? String(r.document_id) : null,
+    document_name: r.document_name ? String(r.document_name) : null,
+    data_json: String(r.data_json),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at)
+  }));
+}
+
+export function getStudySessionByIdFromDB(id: string): DBStudySession | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM study_sessions WHERE id = ?', [id]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    session_type: String(r.session_type),
+    title: String(r.title),
+    topic: String(r.topic),
+    document_id: r.document_id ? String(r.document_id) : null,
+    document_name: r.document_name ? String(r.document_name) : null,
+    data_json: String(r.data_json),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at)
+  };
+}
+
+export function deleteStudySessionFromDB(id: string): void {
+  executeQuery('DELETE FROM study_items WHERE session_id = ?', [id]);
+  executeQuery('DELETE FROM quizzes WHERE session_id = ?', [id]);
+  executeQuery('DELETE FROM flashcards WHERE session_id = ?', [id]);
+  executeQuery('DELETE FROM study_plans WHERE session_id = ?', [id]);
+  executeQuery('DELETE FROM study_sessions WHERE id = ?', [id]);
+}
+
+export function clearAllStudySessionsFromDB(): void {
+  executeQuery('DELETE FROM study_items');
+  executeQuery('DELETE FROM quizzes');
+  executeQuery('DELETE FROM flashcards');
+  executeQuery('DELETE FROM study_plans');
+  executeQuery('DELETE FROM study_sessions');
+}
+
+export function saveQuizInDB(quiz: DBQuiz): void {
+  const now = new Date().toISOString();
+  executeQuery(
+    `INSERT INTO quizzes (id, session_id, topic, difficulty, question_count, questions_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       questions_json = excluded.questions_json,
+       question_count = excluded.question_count`,
+    [
+      quiz.id,
+      quiz.session_id || null,
+      quiz.topic,
+      quiz.difficulty,
+      quiz.question_count,
+      quiz.questions_json,
+      quiz.created_at || now
+    ]
+  );
+}
+
+export function getQuizBySessionIdFromDB(sessionId: string): DBQuiz | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM quizzes WHERE session_id = ?', [sessionId]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    session_id: r.session_id ? String(r.session_id) : null,
+    topic: String(r.topic),
+    difficulty: String(r.difficulty),
+    question_count: Number(r.question_count),
+    questions_json: String(r.questions_json),
+    created_at: String(r.created_at)
+  };
+}
+
+export function saveFlashcardDeckInDB(deck: DBFlashcard): void {
+  const now = new Date().toISOString();
+  executeQuery(
+    `INSERT INTO flashcards (id, session_id, topic, card_count, cards_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       cards_json = excluded.cards_json,
+       card_count = excluded.card_count`,
+    [
+      deck.id,
+      deck.session_id || null,
+      deck.topic,
+      deck.card_count,
+      deck.cards_json,
+      deck.created_at || now
+    ]
+  );
+}
+
+export function getFlashcardDeckBySessionIdFromDB(sessionId: string): DBFlashcard | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM flashcards WHERE session_id = ?', [sessionId]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    session_id: r.session_id ? String(r.session_id) : null,
+    topic: String(r.topic),
+    card_count: Number(r.card_count),
+    cards_json: String(r.cards_json),
+    created_at: String(r.created_at)
+  };
+}
+
+export function saveStudyPlanInDB(plan: DBStudyPlan): void {
+  const now = new Date().toISOString();
+  executeQuery(
+    `INSERT INTO study_plans (id, session_id, subject, days, hours_per_day, plan_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       plan_json = excluded.plan_json,
+       days = excluded.days,
+       hours_per_day = excluded.hours_per_day`,
+    [
+      plan.id,
+      plan.session_id || null,
+      plan.subject,
+      plan.days,
+      plan.hours_per_day,
+      plan.plan_json,
+      plan.created_at || now
+    ]
+  );
+}
+
+export function getStudyPlanBySessionIdFromDB(sessionId: string): DBStudyPlan | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM study_plans WHERE session_id = ?', [sessionId]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    session_id: r.session_id ? String(r.session_id) : null,
+    subject: String(r.subject),
+    days: Number(r.days),
+    hours_per_day: Number(r.hours_per_day),
+    plan_json: String(r.plan_json),
+    created_at: String(r.created_at)
+  };
+}
+
 
 
 

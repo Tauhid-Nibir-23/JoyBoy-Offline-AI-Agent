@@ -9,7 +9,11 @@ import { DBConversation } from '../../../database/db';
 import { ragService } from '../../../rag';
 import { globalStatus } from '../../../core/status';
 
-export function ChatView() {
+export interface ChatViewProps {
+  initialConversationId?: string | null;
+}
+
+export function ChatView({ initialConversationId }: ChatViewProps = {}) {
   const [conversations, setConversations] = useState<DBConversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -31,6 +35,14 @@ export function ChatView() {
     updateProviderInfo();
     updateRAGStats();
   }, []);
+
+  useEffect(() => {
+    if (initialConversationId) {
+      loadConversationsList();
+      setActiveId(initialConversationId);
+      loadConversationMessages(initialConversationId);
+    }
+  }, [initialConversationId]);
 
   const updateProviderInfo = async () => {
     await chatService.resolveProvider();

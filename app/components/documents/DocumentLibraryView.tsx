@@ -11,11 +11,17 @@ import {
   RefreshCw,
   FileCode,
   FileType,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { DocumentRecord, ImportResult } from '../../../documents/types';
 import { documentService } from '../../../documents/documentService';
 import { DocumentViewerView } from './DocumentViewerView';
+import { StudyActionType } from '../../../study/types';
+
+export interface DocumentLibraryViewProps {
+  onStudyAction?: (docId: string, action: StudyActionType) => void;
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -53,7 +59,7 @@ function getFileIcon(fileType: string) {
   return <FileText size={18} style={{ color: '#10b981' }} />;
 }
 
-export const DocumentLibraryView: React.FC = () => {
+export const DocumentLibraryView: React.FC<DocumentLibraryViewProps> = ({ onStudyAction }) => {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
@@ -156,7 +162,8 @@ export const DocumentLibraryView: React.FC = () => {
         onBack={() => {
           setSelectedDocId(null);
           loadDocuments();
-        }} 
+        }}
+        onStudyAction={onStudyAction}
       />
     );
   }
@@ -502,6 +509,27 @@ export const DocumentLibraryView: React.FC = () => {
 
                       <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }} onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => onStudyAction?.(doc.id, 'explain')}
+                            title="Study this document with AI"
+                            style={{
+                              background: 'rgba(245, 158, 11, 0.15)',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              color: '#fde68a',
+                              padding: '5px 9px',
+                              borderRadius: '5px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '4px',
+                              fontSize: '12px',
+                              fontWeight: 600
+                            }}
+                          >
+                            <Sparkles size={13} style={{ color: '#f59e0b' }} />
+                            Study
+                          </button>
+
                           <button
                             onClick={() => setSelectedDocId(doc.id)}
                             title="View Document"

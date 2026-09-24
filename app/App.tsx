@@ -20,6 +20,8 @@ import { ModelManagerView } from './components/settings/ModelManagerView';
 import { SettingsView } from './components/settings/SettingsView';
 import { DocumentLibraryView } from './components/documents/DocumentLibraryView';
 import { KnowledgeBaseView } from './components/knowledge/KnowledgeBaseView';
+import { StudyModeView } from './components/study/StudyModeView';
+import { StudyActionType } from '../study/types';
 import { chatService } from '../ai/chatService';
 import { modelManager } from '../models/manager';
 import { localAIEngine } from '../ai/localEngine';
@@ -27,6 +29,12 @@ import { useGlobalStatus, globalStatus } from '../core/status';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'models' | 'sync' | 'settings'>('chat');
+  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [studyParams, setStudyParams] = useState<{
+    action: StudyActionType;
+    documentId?: string | null;
+  }>({ action: 'explain', documentId: null });
+
   const [sysStatus, setSysStatus] = useState<SystemStatus>(detectEnvironment());
   const [dbState, setDbState] = useState<{
     status: 'initializing' | 'ready' | 'error';
@@ -39,6 +47,11 @@ export default function App() {
   });
 
   const appStatus = useGlobalStatus();
+
+  const handleStudyAction = (docId: string, action: StudyActionType) => {
+    setStudyParams({ action, documentId: docId });
+    setActiveTab('study');
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -237,7 +250,7 @@ export default function App() {
         <section className="view-container" style={{ padding: activeTab === 'chat' && dbState.status === 'ready' ? 0 : '24px', overflowY: activeTab === 'chat' ? 'hidden' : 'auto', height: 'calc(100vh - 52px)' }}>
           {activeTab === 'chat' && (
             dbState.status === 'ready' ? (
-              <ChatView />
+              <ChatView initialConversationId={activeConvId} />
             ) : dbState.status === 'initializing' ? (
               <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '350px' }}>
                 <div style={{ textAlign: 'center', color: '#94a3b8' }}>
@@ -274,17 +287,19 @@ export default function App() {
           )}
 
           {activeTab === 'study' && (
-            <div className="card">
-              <h3>Study Mode (Placeholder)</h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
-                Study modes (Explain, MCQ, CQ, Summarize, Viva Flashcards) will activate after Phase 2 & 6.
-              </p>
-            </div>
+            <StudyModeView 
+              initialAction={studyParams.action}
+              initialDocumentId={studyParams.documentId}
+              onNavigateToChat={(convId) => {
+                setActiveConvId(convId);
+                setActiveTab('chat');
+              }}
+            />
           )}
 
-          {activeTab === 'knowledge' && <KnowledgeBaseView />}
+          {activeTab === 'knowledge' && <KnowledgeBaseView onStudyAction={handleStudyAction} />}
 
-          {activeTab === 'documents' && <DocumentLibraryView />}
+          {activeTab === 'documents' && <DocumentLibraryView onStudyAction={handleStudyAction} />}
 
           {activeTab === 'models' && <ModelManagerView />}
 

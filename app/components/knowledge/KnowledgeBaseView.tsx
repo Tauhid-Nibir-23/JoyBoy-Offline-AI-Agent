@@ -17,6 +17,7 @@ import {
   FileType,
   Info
 } from 'lucide-react';
+import { StudyActionType } from '../../../study/types';
 import { ragService } from '../../../rag';
 import { RAGIndexingStats, RAGSearchResult } from '../../../rag/types';
 import { chatService } from '../../../ai/chatService';
@@ -45,7 +46,11 @@ function formatDate(iso: string | null | undefined): string {
   }
 }
 
-export function KnowledgeBaseView() {
+export interface KnowledgeBaseViewProps {
+  onStudyAction?: (docId: string, action: StudyActionType) => void;
+}
+
+export function KnowledgeBaseView({ onStudyAction }: KnowledgeBaseViewProps = {}) {
   const [stats, setStats] = useState<RAGIndexingStats>({
     totalDocuments: 0,
     indexedDocuments: 0,
@@ -693,6 +698,27 @@ export function KnowledgeBaseView() {
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                         <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            onClick={() => onStudyAction?.(doc.id, 'explain')}
+                            title="Study this document in Study Mode"
+                            style={{
+                              padding: '4px 9px',
+                              backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                              border: '1px solid rgba(245, 158, 11, 0.4)',
+                              color: '#fde68a',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}
+                          >
+                            <Sparkles size={12} style={{ color: '#f59e0b' }} />
+                            Study
+                          </button>
+
                           <button
                             onClick={() => handleIndexDocument(doc.id)}
                             disabled={isThisIndexing || doc.extraction_status !== 'Ready'}
