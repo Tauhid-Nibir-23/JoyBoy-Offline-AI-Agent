@@ -453,12 +453,13 @@ Include:
   // 3. NOTE GENERATOR
   // ==========================================
   public async makeNotes(params: {
-    topic: string;
+    topic?: string;
     documentId?: string;
+    format?: 'bullet' | 'summary' | 'detailed' | string;
     options?: GenerateStudyOptions;
   }): Promise<NotesData> {
     await this.ensureReady();
-    const { topic = '', documentId, options } = params;
+    const { topic = '', documentId, format, options } = params;
     const doc = documentId ? getDocumentById(documentId) : null;
     const effectiveTopic = topic.trim() || (doc ? doc.filename : 'Document Notes');
 
@@ -533,7 +534,7 @@ Format with these exact markdown headers:
   public async generateQuiz(params: {
     topic: string;
     documentId?: string;
-    count?: 5 | 10 | 20;
+    count?: number;
     difficulty?: QuizDifficulty;
     type?: QuizQuestionType;
     options?: GenerateStudyOptions;
@@ -633,7 +634,7 @@ Output format must be valid JSON:
   public async generateFlashcards(params: {
     topic: string;
     documentId?: string;
-    count?: 5 | 10 | 20;
+    count?: number;
     options?: GenerateStudyOptions;
   }): Promise<FlashcardDeck> {
     await this.ensureReady();
@@ -712,12 +713,13 @@ Output pure JSON array:
     topic?: string;
     days: number;
     hoursPerDay: number;
+    level?: 'Beginner' | 'Intermediate' | 'Advanced' | string;
     examDate?: string;
     documentId?: string;
     options?: GenerateStudyOptions;
   }): Promise<StudyPlanData> {
     await this.ensureReady();
-    const { days, hoursPerDay, examDate, documentId, options } = params;
+    const { days, hoursPerDay, level, examDate, documentId, options } = params;
     const doc = documentId ? getDocumentById(documentId) : null;
     const subject = (params.subject || params.topic || (doc ? doc.filename : 'General Study')).trim();
 
