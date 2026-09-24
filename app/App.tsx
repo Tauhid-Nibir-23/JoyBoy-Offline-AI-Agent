@@ -20,19 +20,52 @@ import { chatService } from '../ai/chatService';
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'sync' | 'settings'>('chat');
   const [sysStatus, setSysStatus] = useState<SystemStatus>(detectEnvironment());
-  const [dbInfo, setDbInfo] = useState<{ initialized: boolean; tables: string[] }>({ initialized: false, tables: [] });
+  const [dbState, setDbState] = useState<{
+    status: 'initializing' | 'ready' | 'error';
+    error: string | null;
+    tables: string[];
+  }>({
+    status: 'initializing',
+    error: null,
+    tables: []
+  });
   const [aiProviderName, setAiProviderName] = useState<string>('Mock Assistant');
 
   useEffect(() => {
-    async function setupDb() {
-      const ok = await initDatabase();
-      if (ok) {
-        setDbInfo(getDatabaseStatus());
-        const pName = await chatService.getProviderName();
-        setAiProviderName(pName);
+    let mounted = true;
+    async function setupApp() {
+      try {
+        const ok = await initDatabase();
+        if (!mounted) return;
+
+        if (ok) {
+          const status = getDatabaseStatus();
+          setDbState({
+            status: 'ready',
+            error: null,
+            tables: status.tables
+          });
+          const pName = await chatService.getProviderName();
+          if (mounted) setAiProviderName(pName);
+        } else {
+          const status = getDatabaseStatus();
+          setDbState({
+            status: 'error',
+            error: status.error || 'Failed to initialize SQLite database',
+            tables: []
+          });
+        }
+      } catch (err: any) {
+        if (!mounted) return;
+        setDbState({
+          status: 'error',
+          error: err?.message || 'Database error occurred',
+          tables: []
+        });
       }
     }
-    setupDb();
+
+    setupApp();
 
     const handleOnline = () => setSysStatus(prev => ({ ...prev, isOnline: true }));
     const handleOffline = () => setSysStatus(prev => ({ ...prev, isOnline: false }));
@@ -41,6 +74,7 @@ export default function App() {
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      mounted = false;
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
@@ -149,17 +183,53 @@ export default function App() {
             </div>
 
             {/* DB Status Badge */}
-            <div className={`status-badge ${dbInfo.initialized ? 'badge-online' : 'badge-offline'}`}>
+            <div className={`status-badge ${dbState.status === 'ready' ? 'badge-online' : 'badge-offline'}`}>
               <HardDrive size={14} />
-              <span className={`status-dot ${dbInfo.initialized ? 'dot-green' : 'dot-red'}`}></span>
-              <span>DB: {dbInfo.initialized ? 'Initialized' : 'Error'}</span>
+              <span className={`status-dot ${dbState.status === 'ready' ? 'dot-green' : (dbState.status === 'initializing' ? 'dot-amber' : 'dot-red')}`}></span>
+              <span>DB: {dbState.status === 'ready' ? 'Ready' : (dbState.status === 'initializing' ? 'Connecting' : 'Error')}</span>
             </div>
           </div>
         </header>
 
         {/* Dynamic View Sections */}
-        <section className="view-container" style={{ padding: activeTab === 'chat' ? 0 : '24px' }}>
-          {activeTab === 'chat' && <ChatView />}
+        <section className="view-container" style={{ padding: activeTab === 'chat' && dbState.status === 'ready' ? 0 : '24px' }}>
+          {activeTab === 'chat' && (
+            dbState.status === 'ready' ? (
+              <ChatView />
+            ) : dbState.status === 'initializing' ? (
+              <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '350px' }}>
+                <div style={{ textAlign: 'center', color: '#94a3b8' }}>
+                  <HardDrive size={36} style={{ margin: '0 auto 12px auto', color: '#f59e0b' }} />
+                  <p style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5' }}>Initializing Offline SQLite Database...</p>
+                  <p style={{ fontSize: '12px', marginTop: '6px', color: '#94a3b8' }}>Verifying local schema tables and offline storage.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '350px' }}>
+                <div style={{ textAlign: 'center', color: '#f87171', maxWidth: '440px' }}>
+                  <HardDrive size={36} style={{ margin: '0 auto 12px auto', color: '#ef4444' }} />
+                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#fca5a5' }}>Database Initialization Failed</h3>
+                  <p style={{ fontSize: '13px', marginTop: '8px', color: '#cbd5e1' }}>
+                    {dbState.error || 'Failed to initialize local SQLite storage.'}
+                  </p>
+                  <button 
+                    onClick={() => window.location.reload()} 
+                    style={{
+                      marginTop: '16px',
+                      padding: '8px 16px',
+                      backgroundColor: '#334155',
+                      color: '#f8fafc',
+                      border: '1px solid #475569',
+                      borderRadius: '6px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Retry
+                  </button>
+                </div>
+              </div>
+            )
+          )}
 
           {activeTab === 'study' && (
             <div className="card">

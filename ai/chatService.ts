@@ -10,7 +10,9 @@ import {
   insertMessageInDB,
   getSetting,
   setSetting,
-  DBConversation
+  DBConversation,
+  isDatabaseReady,
+  initDatabase
 } from '../database/db';
 
 export interface SendMessageOptions {
@@ -33,12 +35,18 @@ export class ChatService {
     this.lastResolvedProvider = this.customProvider || this.mockProvider;
   }
 
+  public async ensureDatabaseReady(): Promise<boolean> {
+    if (isDatabaseReady()) return true;
+    return await initDatabase();
+  }
+
   public setProvider(provider: AIProvider): void {
     this.customProvider = provider;
     this.lastResolvedProvider = provider;
   }
 
   public getProviderType(): 'mock' | 'llamacpp' | 'auto' {
+    if (!isDatabaseReady()) return 'auto';
     const saved = getSetting('ai_provider');
     if (saved === 'mock' || saved === 'llamacpp') {
       return saved;
@@ -47,6 +55,7 @@ export class ChatService {
   }
 
   public setProviderType(type: 'mock' | 'llamacpp' | 'auto'): void {
+    if (!isDatabaseReady()) return;
     setSetting('ai_provider', type);
   }
 
@@ -99,24 +108,30 @@ export class ChatService {
   }
 
   public getConversations(): DBConversation[] {
+    if (!isDatabaseReady()) return [];
     return getAllConversations();
   }
 
   public createConversation(initialTitle: string = 'New Conversation'): DBConversation {
+    if (!isDatabaseReady()) {
+      throw new Error('Database not initialized');
+    }
     const id = 'conv_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     return createConversationInDB(id, initialTitle);
   }
 
   public deleteConversation(id: string): void {
+    if (!isDatabaseReady()) return;
     deleteConversationFromDB(id);
   }
 
   public renameConversation(id: string, newTitle: string): void {
-    if (!newTitle.trim()) return;
+    if (!isDatabaseReady() || !newTitle.trim()) return;
     updateConversationTitleInDB(id, newTitle.trim());
   }
 
   public getMessages(conversationId: string): ChatMessage[] {
+    if (!isDatabaseReady()) return [];
     const dbMsgs = getMessagesByConversationId(conversationId);
     return dbMsgs.map((m) => ({
       id: m.id,
@@ -132,6 +147,11 @@ export class ChatService {
     userText: string,
     options?: SendMessageOptions
   ): Promise<{ userMessage: ChatMessage; assistantMessage: ChatMessage }> {
+    const ready = await this.ensureDatabaseReady();
+    if (!ready || !isDatabaseReady()) {
+      throw new Error('Database not initialized');
+    }
+
     const trimmed = userText.trim();
     if (!trimmed) {
       throw new Error('Cannot send empty message');

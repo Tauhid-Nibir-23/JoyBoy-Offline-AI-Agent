@@ -2,6 +2,19 @@ import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
 
 let dbInstance: SqlJsDatabase | null = null;
 let isInitialized = false;
+let initPromise: Promise<boolean> | null = null;
+let lastInitError: string | null = null;
+
+export function isDatabaseReady(): boolean {
+  return isInitialized && dbInstance !== null;
+}
+
+export function resetDatabaseStateForTesting(): void {
+  dbInstance = null;
+  isInitialized = false;
+  initPromise = null;
+  lastInitError = null;
+}
 
 export interface DBConversation {
   id: string;
@@ -50,84 +63,115 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
 
 export async function initDatabase(): Promise<boolean> {
   if (isInitialized && dbInstance) return true;
+  if (initPromise) return initPromise;
 
-  try {
-    const isNodeEnv = typeof window === 'undefined';
-    let locateFn: ((file: string) => string) | undefined;
+  initPromise = (async () => {
+    try {
+      lastInitError = null;
+      const isNodeEnv = typeof window === 'undefined';
+      let locateFn: ((file: string) => string) | undefined;
 
-    if (isNodeEnv) {
-      try {
-        const pathModule = await import('path');
-        const fsModule = await import('fs');
-        locateFn = (file: string) => {
-          const localWasm = pathModule.resolve(process.cwd(), 'node_modules/sql.js/dist', file);
-          if (fsModule.existsSync(localWasm)) {
-            return localWasm;
-          }
-          return file;
-        };
-      } catch {
-        locateFn = (file: string) => file;
-      }
-    } else {
-      locateFn = (file: string) => `https://sql.js.org/dist/${file}`;
-    }
-
-    const SQL = await initSqlJs({
-      locateFile: locateFn
-    });
-
-    if (typeof localStorage !== 'undefined') {
-      const savedDb = localStorage.getItem('offline_study_ai_db');
-      if (savedDb) {
-        const u8array = new Uint8Array(JSON.parse(savedDb));
-        dbInstance = new SQL.Database(u8array);
+      if (isNodeEnv) {
+        try {
+          const pathModule = await import('path');
+          const fsModule = await import('fs');
+          locateFn = (file: string) => {
+            const localWasm = pathModule.resolve(process.cwd(), 'node_modules/sql.js/dist', file);
+            if (fsModule.existsSync(localWasm)) {
+              return localWasm;
+            }
+            return file;
+          };
+        } catch {
+          locateFn = (file: string) => file;
+        }
       } else {
+        // Pure local offline WASM loading from local origin assets (public/ folder)
+        const meta = import.meta as any;
+        const base = (typeof meta !== 'undefined' && meta.env?.BASE_URL) ? meta.env.BASE_URL : '/';
+        const cleanBase = base.endsWith('/') ? base : `${base}/`;
+        locateFn = (file: string) => `${cleanBase}${file}`;
+      }
+
+      const SQL = await initSqlJs({
+        locateFile: locateFn
+      });
+
+      let loadedExisting = false;
+      if (typeof localStorage !== 'undefined') {
+        try {
+          const savedDb = localStorage.getItem('offline_study_ai_db');
+          if (savedDb) {
+            const u8array = new Uint8Array(JSON.parse(savedDb));
+            dbInstance = new SQL.Database(u8array);
+            loadedExisting = true;
+          }
+        } catch (storageReadErr) {
+          console.warn('Could not read existing database from localStorage:', storageReadErr);
+        }
+      }
+
+      if (!loadedExisting || !dbInstance) {
         dbInstance = new SQL.Database();
       }
-    } else {
-      dbInstance = new SQL.Database();
-    }
 
-    dbInstance.run(INITIAL_SCHEMA);
-    saveDatabase();
-    isInitialized = true;
-    return true;
-  } catch (error) {
-    console.warn('Network locateFile failed for sql.js, attempting offline WASM initialization:', error);
-    try {
-      const SQL = await initSqlJs({});
-      dbInstance = new SQL.Database();
+      if (!dbInstance) {
+        throw new Error('Failed to allocate SQLite database instance');
+      }
+
+      // Execute schema to ensure all tables exist
       dbInstance.run(INITIAL_SCHEMA);
+
+      // Verify schema: ensure required tables exist
+      const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
+      const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
+      const requiredTables = ['settings', 'conversations', 'messages'];
+      const missing = requiredTables.filter((t) => !tables.includes(t));
+      if (missing.length > 0) {
+        throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
+      }
+
       saveDatabase();
       isInitialized = true;
       return true;
-    } catch (e) {
-      console.error('SQLite initialization failed completely:', e);
+    } catch (error: any) {
+      const msg = error?.message || String(error);
+      lastInitError = msg;
+      console.error('SQLite initialization failed:', error);
+      isInitialized = false;
+      dbInstance = null;
       return false;
+    } finally {
+      initPromise = null;
     }
-  }
+  })();
+
+  return initPromise;
 }
 
 export function saveDatabase(): void {
   if (dbInstance && typeof localStorage !== 'undefined') {
-    const data = dbInstance.export();
-    const buffer = Array.from(data);
-    localStorage.setItem('offline_study_ai_db', JSON.stringify(buffer));
+    try {
+      const data = dbInstance.export();
+      const buffer = Array.from(data);
+      localStorage.setItem('offline_study_ai_db', JSON.stringify(buffer));
+    } catch (storageWriteErr) {
+      console.warn('Could not persist database to localStorage:', storageWriteErr);
+    }
   }
 }
 
-export function getDatabaseStatus(): { initialized: boolean; tables: string[] } {
+export function getDatabaseStatus(): { initialized: boolean; tables: string[]; error: string | null } {
   if (!dbInstance || !isInitialized) {
-    return { initialized: false, tables: [] };
+    return { initialized: false, tables: [], error: lastInitError || 'Database not initialized' };
   }
 
   try {
     const result = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
     const tables = result[0]?.values.map((v) => String(v[0])) || [];
-    return { initialized: true, tables };
-  } catch {
-    return { initialized: false, tables: [] };
+    return { initialized: true, tables, error: null };
+  } catch (err: any) {
+    return { initialized: false, tables: [], error: err?.message || 'Database error' };
   }
 }
 
