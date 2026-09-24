@@ -30,6 +30,8 @@ export interface DocumentRecord {
   extraction_status: ExtractionStatus;
   extracted_text: string | null;
   character_count: number;
+  indexing_status?: 'Ready' | 'Indexing' | 'Indexed' | 'Index Failed' | null;
+  indexed_at?: string | null;
   error_message: string | null;
 }
 

@@ -1,3 +1,12 @@
+export interface ChatMessageSource {
+  documentId: string;
+  filename: string;
+  chunkIndex: number;
+  heading?: string | null;
+  similarity: number;
+  snippet: string;
+}
+
 export interface ChatMessage {
   id: string;
   conversationId: string;
@@ -6,6 +15,7 @@ export interface ChatMessage {
   createdAt: string;
   providerId?: string;
   metrics?: GenerationMetrics;
+  sources?: ChatMessageSource[];
 }
 
 export interface GenerationMetrics {

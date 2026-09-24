@@ -1,6 +1,7 @@
-import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics } from './provider';
+import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics, ChatMessageSource } from './provider';
 import { MockAIProvider } from './mockProvider';
 import { LlamaCppProvider } from './llamaCppProvider';
+import { ragService } from '../rag';
 import {
   getAllConversations,
   createConversationInDB,
@@ -20,6 +21,7 @@ export interface SendMessageOptions {
   signal?: AbortSignal;
   temperature?: number;
   maxTokens?: number;
+  useStudyMaterials?: boolean;
 }
 
 export class ChatService {
@@ -130,16 +132,38 @@ export class ChatService {
     updateConversationTitleInDB(id, newTitle.trim());
   }
 
+  public isStudyMaterialsEnabled(): boolean {
+    if (!isDatabaseReady()) return true;
+    const val = getSetting('use_study_materials');
+    return val !== 'false';
+  }
+
+  public setStudyMaterialsEnabled(enabled: boolean): void {
+    if (!isDatabaseReady()) return;
+    setSetting('use_study_materials', enabled ? 'true' : 'false');
+  }
+
   public getMessages(conversationId: string): ChatMessage[] {
     if (!isDatabaseReady()) return [];
     const dbMsgs = getMessagesByConversationId(conversationId);
-    return dbMsgs.map((m) => ({
-      id: m.id,
-      conversationId: m.conversation_id,
-      role: m.role,
-      content: m.content,
-      createdAt: m.created_at
-    }));
+    return dbMsgs.map((m) => {
+      let sources: ChatMessageSource[] | undefined = undefined;
+      if (m.sources_json) {
+        try {
+          sources = JSON.parse(m.sources_json);
+        } catch {
+          sources = undefined;
+        }
+      }
+      return {
+        id: m.id,
+        conversationId: m.conversation_id,
+        role: m.role,
+        content: m.content,
+        createdAt: m.created_at,
+        sources
+      };
+    });
   }
 
   public async sendMessage(
@@ -183,6 +207,37 @@ export class ChatService {
       this.renameConversation(conversationId, generatedTitle);
     }
 
+    // Determine whether to use local study materials (RAG)
+    const useRAG = options?.useStudyMaterials !== undefined
+      ? options.useStudyMaterials
+      : this.isStudyMaterialsEnabled();
+
+    let usedSources: ChatMessageSource[] = [];
+    let promptMsgs = currentMsgs;
+    let ragSystemPrompt: string | undefined;
+
+    if (useRAG) {
+      try {
+        const ragContext = await ragService.buildContext(trimmed);
+        if (ragContext.usedKnowledge && ragContext.sources.length > 0) {
+          usedSources = ragContext.sources;
+          // Substitute the latest user message with augmented prompt containing retrieved chunks
+          promptMsgs = currentMsgs.map((m, idx) => {
+            if (idx === currentMsgs.length - 1 && m.role === 'user') {
+              return { ...m, content: ragContext.augmentedUserPrompt };
+            }
+            return m;
+          });
+          ragSystemPrompt = ragContext.systemInstruction;
+        } else if (ragContext.systemInstruction) {
+          // No relevant document chunks found: instruct model to state so and use local AI knowledge
+          ragSystemPrompt = ragContext.systemInstruction;
+        }
+      } catch (ragErr) {
+        console.warn('RAG context retrieval failed, proceeding with normal chat:', ragErr);
+      }
+    }
+
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
     const provider = await this.resolveProvider();
 
@@ -192,6 +247,7 @@ export class ChatService {
     const generateOptions: GenerateOptions = {
       temperature: options?.temperature,
       maxTokens: options?.maxTokens,
+      systemPrompt: ragSystemPrompt,
       signal: options?.signal,
       callbacks: {
         onToken: (chunk: string) => {
@@ -208,7 +264,7 @@ export class ChatService {
     let wasCancelled = false;
 
     try {
-      assistantText = await provider.generateResponse(currentMsgs, generateOptions);
+      assistantText = await provider.generateResponse(promptMsgs, generateOptions);
     } catch (err: any) {
       if (err.message?.includes('cancelled') || options?.signal?.aborted) {
         wasCancelled = true;
@@ -239,15 +295,17 @@ export class ChatService {
       content: finalContent,
       createdAt: new Date().toISOString(),
       providerId: provider.id,
-      metrics: recordedMetrics
+      metrics: recordedMetrics,
+      sources: usedSources.length > 0 ? usedSources : undefined
     };
 
-    // Save assistant message to SQLite
+    // Save assistant message to SQLite with persisted source citations
     insertMessageInDB({
       id: assistantMsg.id,
       conversation_id: assistantMsg.conversationId,
       role: assistantMsg.role,
       content: assistantMsg.content,
+      sources_json: assistantMsg.sources ? JSON.stringify(assistantMsg.sources) : null,
       created_at: assistantMsg.createdAt
     });
 

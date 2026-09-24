@@ -20,7 +20,17 @@ export class MockAIProvider implements AIProvider {
 
     let fullText = '';
 
-    if (prompt.includes('operating system') || prompt.includes('os')) {
+    if (prompt.includes('round robin') || prompt.includes('local study material:')) {
+      fullText = `### Round Robin Scheduling (from Local Study Material)
+
+Based on your local study materials:
+**Round Robin (RR) scheduling** assigns CPU execution time to each process in the ready queue using a fixed **time quantum** in circular order.
+
+#### Key Mechanics:
+- **Preemptive:** If a process does not complete within its assigned time quantum, it is preempted and moved to the back of the ready queue.
+- **Starvation-Free:** Every process receives guaranteed CPU cycles without priority starvation.
+- **Quantum Selection:** A balanced time quantum prevents excessive context switching while maintaining responsiveness.`;
+    } else if (prompt.includes('operating system') || prompt.includes('os')) {
       fullText = `### Operating System Concepts
 
 An **Operating System (OS)** is system software that manages computer hardware, software resources, and provides common services for computer programs.

@@ -16,6 +16,7 @@ import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
 import { ModelManagerView } from './components/settings/ModelManagerView';
 import { DocumentLibraryView } from './components/documents/DocumentLibraryView';
+import { KnowledgeBaseView } from './components/knowledge/KnowledgeBaseView';
 import { chatService } from '../ai/chatService';
 
 export default function App() {
@@ -241,14 +242,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'knowledge' && (
-            <div className="card">
-              <h3>Knowledge Base & Local RAG (Placeholder)</h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
-                Local indexed chunks and citations will be stored here in SQLite FTS5 index.
-              </p>
-            </div>
-          )}
+          {activeTab === 'knowledge' && <KnowledgeBaseView />}
 
           {activeTab === 'documents' && <DocumentLibraryView />}
 

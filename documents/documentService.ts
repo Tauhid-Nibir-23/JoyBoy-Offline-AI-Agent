@@ -7,6 +7,7 @@ import {
 } from './types';
 import { extractDocumentText } from './extractors';
 import { chunkService } from './chunking';
+import { ragService } from '../rag';
 import { 
   getAllDocuments, 
   getDocumentById, 
@@ -150,13 +151,15 @@ export class DocumentService {
             modified_at: new Date().toISOString()
           });
 
-          // Phase 3B Processing Pipeline: Normalize -> Chunk -> Store chunks
+          // Phase 3B Processing Pipeline: Normalize -> Chunk -> Store chunks -> Index Embeddings
           try {
             await chunkService.processDocumentChunks(docId);
+            // Asynchronously generate embeddings and index document for RAG
+            await ragService.indexDocument(docId);
           } catch (chunkErr: any) {
             updateDocumentInDB(docId, {
               extraction_status: 'Failed',
-              error_message: `Chunking failed: ${chunkErr?.message || String(chunkErr)}`,
+              error_message: `Processing failed: ${chunkErr?.message || String(chunkErr)}`,
               modified_at: new Date().toISOString()
             });
             await chunkService.deleteChunksForDocument(docId);

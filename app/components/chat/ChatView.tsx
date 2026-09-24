@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, BookOpen } from 'lucide-react';
 import { ChatSidebar } from './ChatSidebar';
 import { MessageList } from './MessageList';
 import { MessageComposer } from './MessageComposer';
@@ -15,6 +15,7 @@ export function ChatView() {
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState<number>(260);
+  const [useStudyMaterials, setUseStudyMaterials] = useState<boolean>(chatService.isStudyMaterialsEnabled());
   const [providerInfo, setProviderInfo] = useState<{ id: string; name: string; isLocalAI: boolean }>(
     chatService.getActiveProviderSync()
   );
@@ -165,6 +166,7 @@ export function ChatView() {
       // Call service to process & generate response with token streaming
       await chatService.sendMessage(targetConvId, text, {
         signal: abortControllerRef.current.signal,
+        useStudyMaterials,
         onToken: (_token, accumulated) => {
           setStreamingContent(accumulated);
         }
@@ -182,6 +184,12 @@ export function ChatView() {
       setStreamingContent('');
       abortControllerRef.current = null;
     }
+  };
+
+  const toggleStudyMaterials = () => {
+    const next = !useStudyMaterials;
+    setUseStudyMaterials(next);
+    chatService.setStudyMaterialsEnabled(next);
   };
 
   const activeConv = conversations.find((c) => c.id === activeId);
@@ -299,6 +307,39 @@ export function ChatView() {
               </span>
             </div>
           </div>
+
+          {/* Use Study Materials (RAG) Toggle */}
+          <button
+            onClick={toggleStudyMaterials}
+            title={useStudyMaterials ? 'Local knowledge search is active. Click to switch to normal AI chat.' : 'Click to enable local study materials search.'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              backgroundColor: useStudyMaterials ? 'rgba(217, 119, 6, 0.2)' : 'rgba(30, 41, 59, 0.6)',
+              border: useStudyMaterials ? '1px solid #f59e0b' : '1px solid #475569',
+              color: useStudyMaterials ? '#ffedd5' : '#94a3b8'
+            }}
+          >
+            <BookOpen size={14} style={{ color: useStudyMaterials ? '#f59e0b' : '#64748b' }} />
+            <span>Use Study Materials</span>
+            <span style={{
+              fontSize: '10px',
+              padding: '1px 6px',
+              borderRadius: '4px',
+              fontWeight: 700,
+              backgroundColor: useStudyMaterials ? '#d97706' : '#334155',
+              color: useStudyMaterials ? '#1c1917' : '#94a3b8'
+            }}>
+              {useStudyMaterials ? 'ON' : 'OFF'}
+            </span>
+          </button>
         </div>
 
         {/* Message Thread */}

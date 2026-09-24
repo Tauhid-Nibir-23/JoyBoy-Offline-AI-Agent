@@ -28,6 +28,7 @@ export interface DBMessage {
   conversation_id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  sources_json?: string | null;
   created_at: string;
 }
 
@@ -43,6 +44,8 @@ export interface DBDocument {
   extraction_status: 'Imported' | 'Processing' | 'Ready' | 'Failed';
   extracted_text: string | null;
   character_count: number;
+  indexing_status?: 'Ready' | 'Indexing' | 'Indexed' | 'Index Failed' | null;
+  indexed_at?: string | null;
   error_message: string | null;
 }
 
@@ -58,6 +61,7 @@ export interface DBDocumentChunk {
   heading: string | null;
   page_number: number | null;
   metadata_json: string | null;
+  embedding_json?: string | null;
   created_at?: string;
 }
 
@@ -78,8 +82,9 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
     id TEXT PRIMARY KEY,
     conversation_id TEXT NOT NULL,
-    role TEXT CHECK(role IN ('system', 'user', 'assistant')) NOT NULL,
+    role CHECK(role IN ('system', 'user', 'assistant')) NOT NULL,
     content TEXT NOT NULL,
+    sources_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
@@ -96,6 +101,8 @@ CREATE TABLE IF NOT EXISTS documents (
     extraction_status TEXT CHECK(extraction_status IN ('Imported', 'Processing', 'Ready', 'Failed')) NOT NULL DEFAULT 'Imported',
     extracted_text TEXT,
     character_count INTEGER DEFAULT 0,
+    indexing_status TEXT CHECK(indexing_status IN ('Pending', 'Indexing', 'Indexed', 'Index Failed', 'Ready')) DEFAULT 'Ready',
+    indexed_at TIMESTAMP,
     error_message TEXT
 );
 
@@ -111,6 +118,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     heading TEXT,
     page_number INTEGER,
     metadata_json TEXT,
+    embedding_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
     UNIQUE(document_id, chunk_index)
@@ -186,6 +194,12 @@ export async function initDatabase(): Promise<boolean> {
 
       // Execute schema to ensure all tables exist
       dbInstance.run(INITIAL_SCHEMA);
+
+      // Safe schema migrations for existing SQLite databases
+      try { dbInstance.run('ALTER TABLE messages ADD COLUMN sources_json TEXT;'); } catch (_) {}
+      try { dbInstance.run("ALTER TABLE documents ADD COLUMN indexing_status TEXT DEFAULT 'Ready';"); } catch (_) {}
+      try { dbInstance.run('ALTER TABLE documents ADD COLUMN indexed_at TIMESTAMP;'); } catch (_) {}
+      try { dbInstance.run('ALTER TABLE document_chunks ADD COLUMN embedding_json TEXT;'); } catch (_) {}
 
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
@@ -330,14 +344,15 @@ export function getMessagesByConversationId(conversationId: string): DBMessage[]
     conversation_id: String(r.conversation_id),
     role: r.role as 'system' | 'user' | 'assistant',
     content: String(r.content),
+    sources_json: r.sources_json ? String(r.sources_json) : null,
     created_at: String(r.created_at)
   }));
 }
 
 export function insertMessageInDB(msg: DBMessage): DBMessage {
   executeQuery(
-    'INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)',
-    [msg.id, msg.conversation_id, msg.role, msg.content, msg.created_at]
+    'INSERT INTO messages (id, conversation_id, role, content, sources_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [msg.id, msg.conversation_id, msg.role, msg.content, msg.sources_json || null, msg.created_at]
   );
   // Touch conversation updated_at
   executeQuery('UPDATE conversations SET updated_at = ? WHERE id = ?', [msg.created_at, msg.conversation_id]);
@@ -360,6 +375,8 @@ export function getAllDocuments(): DBDocument[] {
     extraction_status: r.extraction_status as DBDocument['extraction_status'],
     extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
     character_count: Number(r.character_count || 0),
+    indexing_status: (r.indexing_status ? String(r.indexing_status) : 'Ready') as DBDocument['indexing_status'],
+    indexed_at: r.indexed_at ? String(r.indexed_at) : null,
     error_message: r.error_message ? String(r.error_message) : null
   }));
 }
@@ -381,6 +398,8 @@ export function getDocumentById(id: string): DBDocument | null {
     extraction_status: r.extraction_status as DBDocument['extraction_status'],
     extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
     character_count: Number(r.character_count || 0),
+    indexing_status: (r.indexing_status ? String(r.indexing_status) : 'Ready') as DBDocument['indexing_status'],
+    indexed_at: r.indexed_at ? String(r.indexed_at) : null,
     error_message: r.error_message ? String(r.error_message) : null
   };
 }
@@ -402,6 +421,8 @@ export function getDocumentByHash(fileHash: string): DBDocument | null {
     extraction_status: r.extraction_status as DBDocument['extraction_status'],
     extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
     character_count: Number(r.character_count || 0),
+    indexing_status: (r.indexing_status ? String(r.indexing_status) : 'Ready') as DBDocument['indexing_status'],
+    indexed_at: r.indexed_at ? String(r.indexed_at) : null,
     error_message: r.error_message ? String(r.error_message) : null
   };
 }
@@ -411,8 +432,8 @@ export function insertDocumentInDB(doc: DBDocument): DBDocument {
     `INSERT INTO documents (
       id, filename, original_path, file_type, file_size, file_hash,
       imported_at, modified_at, extraction_status, extracted_text,
-      character_count, error_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      character_count, indexing_status, indexed_at, error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       doc.id,
       doc.filename,
@@ -425,6 +446,8 @@ export function insertDocumentInDB(doc: DBDocument): DBDocument {
       doc.extraction_status,
       doc.extracted_text,
       doc.character_count,
+      doc.indexing_status || 'Ready',
+      doc.indexed_at || null,
       doc.error_message
     ]
   );
@@ -471,6 +494,7 @@ export function getChunksByDocumentId(documentId: string): DBDocumentChunk[] {
     heading: r.heading !== null && r.heading !== undefined ? String(r.heading) : null,
     page_number: r.page_number !== null && r.page_number !== undefined ? Number(r.page_number) : null,
     metadata_json: r.metadata_json !== null && r.metadata_json !== undefined ? String(r.metadata_json) : null,
+    embedding_json: r.embedding_json !== null && r.embedding_json !== undefined ? String(r.embedding_json) : null,
     created_at: r.created_at ? String(r.created_at) : undefined
   }));
 }
@@ -492,6 +516,7 @@ export function getChunkById(chunkId: string): DBDocumentChunk | null {
     heading: r.heading !== null && r.heading !== undefined ? String(r.heading) : null,
     page_number: r.page_number !== null && r.page_number !== undefined ? Number(r.page_number) : null,
     metadata_json: r.metadata_json !== null && r.metadata_json !== undefined ? String(r.metadata_json) : null,
+    embedding_json: r.embedding_json !== null && r.embedding_json !== undefined ? String(r.embedding_json) : null,
     created_at: r.created_at ? String(r.created_at) : undefined
   };
 }
@@ -500,8 +525,8 @@ export function insertChunkInDB(chunk: DBDocumentChunk): DBDocumentChunk {
   executeQuery(
     `INSERT INTO document_chunks (
       id, document_id, chunk_index, text, start_offset, end_offset,
-      character_count, token_estimate, heading, page_number, metadata_json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      character_count, token_estimate, heading, page_number, metadata_json, embedding_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       chunk.id,
       chunk.document_id,
@@ -513,7 +538,8 @@ export function insertChunkInDB(chunk: DBDocumentChunk): DBDocumentChunk {
       chunk.token_estimate,
       chunk.heading,
       chunk.page_number,
-      chunk.metadata_json
+      chunk.metadata_json,
+      chunk.embedding_json || null
     ]
   );
   return chunk;
@@ -524,6 +550,61 @@ export function insertChunksInDB(chunks: DBDocumentChunk[]): void {
   for (const chunk of chunks) {
     insertChunkInDB(chunk);
   }
+}
+
+export function updateChunkEmbedding(chunkId: string, embeddingJson: string): void {
+  executeQuery('UPDATE document_chunks SET embedding_json = ? WHERE id = ?', [embeddingJson, chunkId]);
+}
+
+export function updateDocumentIndexingStatus(
+  documentId: string,
+  status: 'Ready' | 'Indexing' | 'Indexed' | 'Index Failed',
+  error?: string
+): void {
+  const now = new Date().toISOString();
+  if (status === 'Indexed') {
+    executeQuery(
+      'UPDATE documents SET indexing_status = ?, indexed_at = ?, modified_at = ? WHERE id = ?',
+      [status, now, now, documentId]
+    );
+  } else if (status === 'Index Failed') {
+    executeQuery(
+      'UPDATE documents SET indexing_status = ?, error_message = ?, modified_at = ? WHERE id = ?',
+      [status, error || 'Indexing failed', now, documentId]
+    );
+  } else {
+    executeQuery(
+      'UPDATE documents SET indexing_status = ?, modified_at = ? WHERE id = ?',
+      [status, now, documentId]
+    );
+  }
+}
+
+export function getAllChunksWithEmbeddings(): Array<DBDocumentChunk & { filename: string; file_type: string }> {
+  if (!dbInstance) return [];
+  const rows = executeQuery(`
+    SELECT c.*, d.filename, d.file_type 
+    FROM document_chunks c
+    JOIN documents d ON c.document_id = d.id
+    WHERE c.embedding_json IS NOT NULL
+  `);
+  return rows.map((r) => ({
+    id: String(r.id),
+    document_id: String(r.document_id),
+    chunk_index: Number(r.chunk_index),
+    text: String(r.text),
+    start_offset: Number(r.start_offset),
+    end_offset: Number(r.end_offset),
+    character_count: Number(r.character_count),
+    token_estimate: Number(r.token_estimate),
+    heading: r.heading !== null && r.heading !== undefined ? String(r.heading) : null,
+    page_number: r.page_number !== null && r.page_number !== undefined ? Number(r.page_number) : null,
+    metadata_json: r.metadata_json !== null && r.metadata_json !== undefined ? String(r.metadata_json) : null,
+    embedding_json: r.embedding_json !== null && r.embedding_json !== undefined ? String(r.embedding_json) : null,
+    created_at: r.created_at ? String(r.created_at) : undefined,
+    filename: String(r.filename),
+    file_type: String(r.file_type)
+  }));
 }
 
 export function deleteChunksByDocumentId(documentId: string): void {

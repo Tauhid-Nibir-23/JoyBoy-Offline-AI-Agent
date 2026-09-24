@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { User, Bot } from 'lucide-react';
+import { User, Bot, BookOpen, FileText } from 'lucide-react';
 import { ChatMessage } from '../../../ai/provider';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
@@ -219,7 +219,70 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                 {isUser ? (
                   <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{msg.content}</div>
                 ) : (
-                  <MarkdownRenderer content={msg.content} />
+                  <div>
+                    <MarkdownRenderer content={msg.content} />
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div style={{
+                        marginTop: '12px',
+                        paddingTop: '8px',
+                        borderTop: '1px solid rgba(217, 119, 6, 0.25)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '6px'
+                      }}>
+                        <div style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          color: '#f59e0b',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          <BookOpen size={13} />
+                          <span>Sources ({msg.sources.length})</span>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {msg.sources.map((s, sIdx) => (
+                            <div
+                              key={sIdx}
+                              title={s.snippet ? `Excerpt: ${s.snippet}` : undefined}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '5px',
+                                backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                                border: '1px solid rgba(217, 119, 6, 0.35)',
+                                borderRadius: '6px',
+                                padding: '3px 8px',
+                                fontSize: '12px',
+                                color: '#fed7aa',
+                                cursor: 'default',
+                                userSelect: 'none'
+                              }}
+                            >
+                              <FileText size={12} style={{ color: '#f59e0b' }} />
+                              <span style={{ fontWeight: 600 }}>{s.filename}</span>
+                              {s.heading && (
+                                <span style={{ color: '#94a3b8', fontSize: '11px' }}>· {s.heading}</span>
+                              )}
+                              <span style={{
+                                fontSize: '10px',
+                                color: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.12)',
+                                padding: '1px 4px',
+                                borderRadius: '4px',
+                                marginLeft: '2px'
+                              }}>
+                                {Math.round(s.similarity * 100)}% match
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS messages (
     conversation_id TEXT NOT NULL,
     role TEXT CHECK(role IN ('system', 'user', 'assistant')) NOT NULL,
     content TEXT NOT NULL,
+    sources_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
@@ -34,6 +35,8 @@ CREATE TABLE IF NOT EXISTS documents (
     extraction_status TEXT CHECK(extraction_status IN ('Imported', 'Processing', 'Ready', 'Failed')) NOT NULL DEFAULT 'Imported',
     extracted_text TEXT,
     character_count INTEGER DEFAULT 0,
+    indexing_status TEXT CHECK(indexing_status IN ('Pending', 'Indexing', 'Indexed', 'Index Failed', 'Ready')) DEFAULT 'Ready',
+    indexed_at TIMESTAMP,
     error_message TEXT
 );
 
@@ -49,6 +52,7 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     heading TEXT,
     page_number INTEGER,
     metadata_json TEXT,
+    embedding_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
     UNIQUE(document_id, chunk_index)
