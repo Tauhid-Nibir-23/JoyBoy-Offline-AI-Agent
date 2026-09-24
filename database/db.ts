@@ -899,11 +899,11 @@ export function saveStudySessionInDB(session: DBStudySession): void {
     [
       session.id,
       session.session_type,
-      session.title,
-      session.topic,
+      session.title || 'Untitled Session',
+      session.topic || 'General Topic',
       session.document_id || null,
       session.document_name || null,
-      session.data_json,
+      session.data_json || '{}',
       session.created_at || now,
       session.updated_at || now
     ]

@@ -1,5 +1,4 @@
-// Offline Study AI - Study Plan View (Phase 5)
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -7,7 +6,9 @@ import {
   RotateCcw, 
   MessageSquare, 
   AlertTriangle,
-  BookOpen
+  BookOpen,
+  Copy,
+  Check
 } from 'lucide-react';
 import { StudyPlanData } from '../../../study/types';
 
@@ -18,6 +19,24 @@ interface StudyPlanViewProps {
 }
 
 export const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, onOpenInChat, onRetry }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const lines = [
+      `# Study Plan: ${plan.subject}`,
+      `Duration: ${plan.days} Days (${plan.hoursPerDay} hours/day)${plan.examDate ? ` | Target Exam: ${plan.examDate}` : ''}`,
+      `Disclaimer: ${plan.disclaimer}`,
+      '',
+      '## Daily Schedule:'
+    ];
+    plan.schedule.forEach(s => {
+      lines.push(`- Day ${s.day}: ${s.topic} (${s.estimatedDuration})\n  Activity: ${s.activity}\n  Task: ${s.revisionTask}`);
+    });
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="card" style={{ padding: '24px', maxWidth: '880px', margin: '0 auto' }}>
       {/* Header */}
@@ -44,24 +63,45 @@ export const StudyPlanView: React.FC<StudyPlanViewProps> = ({ plan, onOpenInChat
           </div>
         </div>
 
-        <button
-          onClick={() => onOpenInChat(plan)}
-          style={{
-            padding: '8px 16px',
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '13px',
-            fontWeight: 600
-          }}
-        >
-          <MessageSquare size={15} /> Modify Plan in Chat
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              padding: '8px 14px',
+              background: '#1e293b',
+              color: '#f8fafc',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px'
+            }}
+          >
+            {copied ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+            {copied ? 'Copied!' : 'Copy Plan'}
+          </button>
+
+          <button
+            onClick={() => onOpenInChat(plan)}
+            style={{
+              padding: '8px 16px',
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '13px',
+              fontWeight: 600
+            }}
+          >
+            <MessageSquare size={15} /> Modify Plan in Chat
+          </button>
+        </div>
       </div>
 
       {/* Safety / Grounding Notice */}

@@ -1,11 +1,12 @@
-// Offline Study AI - Summary View (Phase 5)
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   FileText, 
   Layers, 
   MessageSquare, 
   CheckCircle2, 
-  BookOpen 
+  BookOpen,
+  Copy,
+  Check
 } from 'lucide-react';
 import { SummaryData } from '../../../study/types';
 
@@ -16,6 +17,15 @@ interface SummaryViewProps {
 }
 
 export const SummaryView: React.FC<SummaryViewProps> = ({ summary, onOpenInChat, onRetry }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const text = `# ${summary.topic} (${summary.mode} summary)\n\n${summary.keyTakeaways?.length ? `## Key Takeaways\n${summary.keyTakeaways.map(k => `- ${k}`).join('\n')}\n\n` : ''}## Summary\n${summary.content}`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="card" style={{ padding: '24px', maxWidth: '820px', margin: '0 auto' }}>
       {/* Header */}
@@ -52,24 +62,45 @@ export const SummaryView: React.FC<SummaryViewProps> = ({ summary, onOpenInChat,
           </div>
         </div>
 
-        <button
-          onClick={() => onOpenInChat(summary)}
-          style={{
-            padding: '7px 14px',
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '12px',
-            fontWeight: 600
-          }}
-        >
-          <MessageSquare size={14} /> Ask AI About Summary
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              padding: '7px 12px',
+              background: '#1e293b',
+              color: '#f8fafc',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px'
+            }}
+          >
+            {copied ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+
+          <button
+            onClick={() => onOpenInChat(summary)}
+            style={{
+              padding: '7px 14px',
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              fontWeight: 600
+            }}
+          >
+            <MessageSquare size={14} /> Ask AI About Summary
+          </button>
+        </div>
       </div>
 
       {/* Grounding Notice if applicable */}

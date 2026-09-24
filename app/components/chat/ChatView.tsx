@@ -158,6 +158,17 @@ export function ChatView({ initialConversationId }: ChatViewProps = {}) {
     }
   };
 
+  const handleDeleteMessage = (msgId: string) => {
+    try {
+      chatService.deleteMessage(msgId);
+      if (activeId) {
+        setMessages(chatService.getMessages(activeId));
+      }
+    } catch (err: any) {
+      setErrorMsg('Failed to delete message: ' + err.message);
+    }
+  };
+
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -245,6 +256,9 @@ export function ChatView({ initialConversationId }: ChatViewProps = {}) {
       if (!err.message?.includes('cancelled')) {
         setErrorMsg('Inference Notice: ' + err.message);
         globalStatus.setAIStatus('Error');
+      }
+      if (targetConvId) {
+        setMessages(chatService.getMessages(targetConvId));
       }
     } finally {
       setIsLoading(false);
@@ -466,6 +480,7 @@ export function ChatView({ initialConversationId }: ChatViewProps = {}) {
             onSuggestionClick={(prompt) => handleSendMessage(prompt)}
             onRegenerate={handleRegenerate}
             onRetry={handleRegenerate}
+            onDeleteMessage={handleDeleteMessage}
           />
         </div>
 

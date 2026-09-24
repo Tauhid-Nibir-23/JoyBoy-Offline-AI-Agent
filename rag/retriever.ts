@@ -31,7 +31,7 @@ export class LocalRetriever {
     query: string,
     options?: RAGQueryOptions
   ): Promise<RAGSearchResult[]> {
-    const trimmed = query.trim();
+    const trimmed = (typeof query === 'string' ? query : '').trim();
     if (!trimmed) {
       return [];
     }

@@ -103,13 +103,28 @@ export default function App() {
     const handleOnline = () => setSysStatus(prev => ({ ...prev, isOnline: true }));
     const handleOffline = () => setSysStatus(prev => ({ ...prev, isOnline: false }));
 
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        try {
+          const newConv = chatService.createConversation('New Chat');
+          setActiveConvId(newConv.id);
+          setActiveTab('chat');
+        } catch {
+          setActiveTab('chat');
+        }
+      }
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('keydown', handleGlobalKeyDown);
 
     return () => {
       mounted = false;
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
     };
   }, []);
 

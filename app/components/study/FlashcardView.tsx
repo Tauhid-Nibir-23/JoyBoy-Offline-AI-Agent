@@ -1,5 +1,5 @@
 // Offline Study AI - Interactive Flashcards View (Phase 5)
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   RotateCw, 
   ChevronLeft, 
@@ -23,6 +23,12 @@ export const FlashcardView: React.FC<FlashcardViewProps> = ({ deck, onOpenInChat
   const [cards, setCards] = useState<FlashcardItem[]>(deck.cards);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+
+  useEffect(() => {
+    setCards(deck.cards);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+  }, [deck]);
 
   const currentCard = cards[currentIndex];
 
@@ -57,7 +63,7 @@ export const FlashcardView: React.FC<FlashcardViewProps> = ({ deck, onOpenInChat
 
   const handleReset = () => {
     setIsFlipped(false);
-    setCards(deck.cards);
+    setCards([...deck.cards]);
     setCurrentIndex(0);
   };
 
@@ -214,6 +220,25 @@ export const FlashcardView: React.FC<FlashcardViewProps> = ({ deck, onOpenInChat
         </div>
 
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleReset}
+            title="Reset Deck Order"
+            style={{
+              padding: '8px 12px',
+              background: '#1e293b',
+              color: '#cbd5e1',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px'
+            }}
+          >
+            <RotateCcw size={14} /> Reset
+          </button>
+
           <button
             onClick={handleShuffle}
             title="Shuffle Cards"

@@ -458,10 +458,11 @@ Include:
     options?: GenerateStudyOptions;
   }): Promise<NotesData> {
     await this.ensureReady();
-    const { topic, documentId, options } = params;
+    const { topic = '', documentId, options } = params;
     const doc = documentId ? getDocumentById(documentId) : null;
+    const effectiveTopic = topic.trim() || (doc ? doc.filename : 'Document Notes');
 
-    const rag = await this.retrieveContext(topic, documentId);
+    const rag = await this.retrieveContext(effectiveTopic, documentId);
 
     const systemPrompt = 
       'You are a high-performing student assistant. Create structured, clear study notes. ' +
@@ -475,10 +476,10 @@ Include:
 ${rag.materialContext}
 
 TASK:
-Create comprehensive study notes for "${topic}" strictly grounded in the local study material above.
+Create comprehensive study notes for "${effectiveTopic}" strictly grounded in the local study material above.
 
 Format with these exact markdown headers:
-# ${topic}
+# ${effectiveTopic}
 ## Key Concepts
 ## Important Definitions
 ## Important Points
@@ -503,7 +504,7 @@ Format with these exact markdown headers:
     const rawMarkdown = await this.callModel(systemPrompt, userPrompt, options, 1400, 0.5);
 
     const notesData: NotesData = {
-      topic,
+      topic: effectiveTopic,
       markdown: rawMarkdown,
       sources: rag.sources.length > 0 ? rag.sources : undefined,
       groundingNotice: rag.groundingNotice
@@ -514,8 +515,8 @@ Format with these exact markdown headers:
     saveStudySessionInDB({
       id: sessionId,
       session_type: 'notes',
-      title: `Notes: ${topic}`,
-      topic,
+      title: `Notes: ${effectiveTopic}`,
+      topic: effectiveTopic,
       document_id: documentId || null,
       document_name: doc ? doc.filename : null,
       data_json: JSON.stringify(notesData),
@@ -707,7 +708,8 @@ Output pure JSON array:
   // 6. STUDY PLAN GENERATOR
   // ==========================================
   public async generateStudyPlan(params: {
-    subject: string;
+    subject?: string;
+    topic?: string;
     days: number;
     hoursPerDay: number;
     examDate?: string;
@@ -715,8 +717,9 @@ Output pure JSON array:
     options?: GenerateStudyOptions;
   }): Promise<StudyPlanData> {
     await this.ensureReady();
-    const { subject, days, hoursPerDay, examDate, documentId, options } = params;
+    const { days, hoursPerDay, examDate, documentId, options } = params;
     const doc = documentId ? getDocumentById(documentId) : null;
+    const subject = (params.subject || params.topic || (doc ? doc.filename : 'General Study')).trim();
 
     const rag = await this.retrieveContext(subject, documentId);
 

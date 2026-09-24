@@ -1,5 +1,4 @@
-// Offline Study AI - Explain View (Phase 5)
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Lightbulb, 
   Cpu, 
@@ -7,7 +6,9 @@ import {
   Code, 
   GraduationCap, 
   MessageSquare, 
-  BookOpen 
+  BookOpen,
+  Copy,
+  Check
 } from 'lucide-react';
 import { ExplainData } from '../../../study/types';
 
@@ -18,6 +19,15 @@ interface ExplainViewProps {
 }
 
 export const ExplainView: React.FC<ExplainViewProps> = ({ explain, onOpenInChat, onRetry }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    const text = `# ${explain.topic}\n\n## Definition\n${explain.definition}\n\n## How It Works\n${explain.howItWorks}\n\n## Example\n${explain.example}${explain.examPoints?.length ? `\n\n## Exam Points\n${explain.examPoints.map(p => `- ${p}`).join('\n')}` : ''}`;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
     <div className="card" style={{ padding: '24px', maxWidth: '820px', margin: '0 auto' }}>
       {/* Header */}
@@ -38,24 +48,45 @@ export const ExplainView: React.FC<ExplainViewProps> = ({ explain, onOpenInChat,
           <span style={{ color: '#f8fafc', fontWeight: 600, fontSize: '15px' }}>{explain.topic}</span>
         </div>
 
-        <button
-          onClick={() => onOpenInChat(explain)}
-          style={{
-            padding: '7px 14px',
-            background: '#2563eb',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontSize: '12px',
-            fontWeight: 600
-          }}
-        >
-          <MessageSquare size={14} /> Ask Follow-up in Chat
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleCopy}
+            style={{
+              padding: '7px 12px',
+              background: '#1e293b',
+              color: '#f8fafc',
+              border: '1px solid #334155',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px'
+            }}
+          >
+            {copied ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+
+          <button
+            onClick={() => onOpenInChat(explain)}
+            style={{
+              padding: '7px 14px',
+              background: '#2563eb',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '12px',
+              fontWeight: 600
+            }}
+          >
+            <MessageSquare size={14} /> Ask Follow-up in Chat
+          </button>
+        </div>
       </div>
 
       {/* Grounding Notice if applicable */}

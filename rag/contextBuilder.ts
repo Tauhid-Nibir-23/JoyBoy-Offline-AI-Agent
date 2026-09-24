@@ -25,7 +25,7 @@ export class ContextBuilder {
         sources: [],
         usedKnowledge: false,
         systemInstruction:
-          'You are an offline personal study assistant. The local knowledge search did not find relevant excerpts in the imported study materials for this question. Note briefly: "I couldn\'t find relevant information in your imported study materials. I will answer using my local AI knowledge." and provide a helpful, concise answer based on your knowledge.'
+        'You are an offline personal study assistant. If you couldn\'t find relevant information in your imported study materials, note: "No sufficiently relevant material was found in your study documents." and answer helpfully using your general offline knowledge.'
       };
     }
 

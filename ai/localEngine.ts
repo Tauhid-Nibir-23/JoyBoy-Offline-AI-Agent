@@ -106,6 +106,17 @@ export class LocalAIEngine {
   public async loadModel(modelPath: string): Promise<boolean> {
     if (!modelPath) return false;
 
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      try {
+        const fs = await import('fs');
+        if (!fs.existsSync(modelPath)) {
+          return false;
+        }
+      } catch {
+        // proceed
+      }
+    }
+
     // Check if server is already running
     const serverStatus = await tryTauriInvoke<{ isRunning: boolean; port: number; loadedModelPath: string | null }>(
       'get_local_llama_server_status'

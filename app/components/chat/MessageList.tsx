@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, BookOpen, FileText, Copy, Check, RotateCw, AlertCircle, X, ExternalLink } from 'lucide-react';
+import { User, BookOpen, FileText, Copy, Check, RotateCw, AlertCircle, X, ExternalLink, Trash2 } from 'lucide-react';
 import { ChatMessage, ChatMessageSource } from '../../../ai/provider';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
@@ -10,6 +10,7 @@ interface MessageListProps {
   onSuggestionClick?: (prompt: string) => void;
   onRegenerate?: () => void;
   onRetry?: () => void;
+  onDeleteMessage?: (messageId: string) => void;
 }
 
 export function MessageList({
@@ -18,7 +19,8 @@ export function MessageList({
   streamingContent,
   onSuggestionClick,
   onRegenerate,
-  onRetry
+  onRetry,
+  onDeleteMessage
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -27,6 +29,17 @@ export function MessageList({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading, streamingContent]);
+
+  // Accessibility: close inspection modal on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && inspectedSource) {
+        setInspectedSource(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [inspectedSource]);
 
   const handleCopyMessage = (msgId: string, content: string) => {
     // Strip performance footer before copying
@@ -241,7 +254,27 @@ export function MessageList({
                 boxShadow: '0 4px 18px rgba(0, 0, 0, 0.55)'
               }}>
                 {isUser ? (
-                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{msg.content}</div>
+                  <div>
+                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{msg.content}</div>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px', opacity: 0.75 }}>
+                      <button
+                        onClick={() => handleCopyMessage(msg.id, msg.content)}
+                        style={{ background: 'none', border: 'none', color: copiedId === msg.id ? '#6ee7b7' : '#cbd5e1', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                        title="Copy message"
+                      >
+                        {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
+                      </button>
+                      {onDeleteMessage && (
+                        <button
+                          onClick={() => onDeleteMessage(msg.id)}
+                          style={{ background: 'none', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                          title="Delete message"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div>
                     <MarkdownRenderer content={msg.content} />
@@ -380,6 +413,28 @@ export function MessageList({
                         >
                           <RotateCw size={12} />
                           <span>Retry</span>
+                        </button>
+                      )}
+
+                      {onDeleteMessage && (
+                        <button
+                          onClick={() => onDeleteMessage(msg.id)}
+                          title="Delete message"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'none',
+                            border: 'none',
+                            color: '#64748b',
+                            fontSize: '11.5px',
+                            cursor: 'pointer',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            marginLeft: 'auto'
+                          }}
+                        >
+                          <Trash2 size={12} />
                         </button>
                       )}
                     </div>

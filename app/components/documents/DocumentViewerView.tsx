@@ -58,8 +58,11 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
   const [copiedHash, setCopiedHash] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showStudyMenu, setShowStudyMenu] = useState(false);
+  const [showFullText, setShowFullText] = useState(false);
 
   const textContent = doc.extracted_text || '';
+  const isLargeDocument = textContent.length > 50000;
+  const displayText = (isLargeDocument && !showFullText) ? textContent.slice(0, 50000) : textContent;
 
   const loadChunks = async () => {
     try {
@@ -129,16 +132,16 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
 
   // Safe highlighted text rendering without dangerouslySetInnerHTML
   const { highlightedElements, matchCount } = useMemo(() => {
-    if (!textContent || !searchQuery.trim()) {
+    if (!displayText || !searchQuery.trim()) {
       return {
-        highlightedElements: <span>{textContent}</span>,
+        highlightedElements: <span>{displayText}</span>,
         matchCount: 0
       };
     }
 
     const query = searchQuery.trim();
     const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    const parts = textContent.split(regex);
+    const parts = displayText.split(regex);
     let count = 0;
 
     const elements = parts.map((part, index) => {
@@ -166,7 +169,7 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
       highlightedElements: <>{elements}</>,
       matchCount: count
     };
-  }, [textContent, searchQuery]);
+  }, [displayText, searchQuery]);
 
   const selectedChunk = chunks.find(c => c.id === selectedChunkId) || chunks[0] || null;
 
@@ -701,19 +704,57 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
             }}
           >
             {textContent ? (
-              <pre 
-                style={{ 
-                  whiteSpace: 'pre-wrap', 
-                  wordBreak: 'break-word',
-                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-                  fontSize: '13px',
-                  lineHeight: '1.6',
-                  color: '#e2e8f0',
-                  margin: 0
-                }}
-              >
-                {highlightedElements}
-              </pre>
+              <>
+                {isLargeDocument && !showFullText && (
+                  <div style={{
+                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    borderRadius: '6px',
+                    padding: '10px 14px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '12px',
+                    color: '#fef3c7'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertCircle size={15} style={{ color: '#f59e0b' }} />
+                      <span>
+                        Constrained Viewer: Showing first 50,000 of {textContent.length.toLocaleString()} characters for smooth desktop performance.
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setShowFullText(true)}
+                      style={{
+                        background: '#334155',
+                        border: '1px solid #475569',
+                        color: '#f8fafc',
+                        padding: '4px 10px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontWeight: 600
+                      }}
+                    >
+                      Show Full Text
+                    </button>
+                  </div>
+                )}
+                <pre 
+                  style={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                    fontSize: '13px',
+                    lineHeight: '1.6',
+                    color: '#e2e8f0',
+                    margin: 0
+                  }}
+                >
+                  {highlightedElements}
+                </pre>
+              </>
             ) : (
               <div 
                 style={{ 

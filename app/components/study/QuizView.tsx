@@ -25,6 +25,13 @@ export const QuizView: React.FC<QuizViewProps> = ({ quiz, onOpenInChat, onRetry 
   const [submitted, setSubmitted] = useState<Record<number, boolean>>({});
   const [showFinalResults, setShowFinalResults] = useState(false);
 
+  React.useEffect(() => {
+    setCurrentIndex(0);
+    setUserAnswers({});
+    setSubmitted({});
+    setShowFinalResults(false);
+  }, [quiz]);
+
   const currentQ: QuizQuestion | undefined = quiz.questions[currentIndex];
   const isLastQuestion = currentIndex === quiz.questions.length - 1;
 
@@ -34,7 +41,7 @@ export const QuizView: React.FC<QuizViewProps> = ({ quiz, onOpenInChat, onRetry 
   };
 
   const handleSubmitAnswer = () => {
-    if (userAnswers[currentIndex] === undefined) return;
+    if (userAnswers[currentIndex] === undefined || submitted[currentIndex]) return;
     setSubmitted((prev) => ({ ...prev, [currentIndex]: true }));
   };
 
@@ -110,7 +117,28 @@ export const QuizView: React.FC<QuizViewProps> = ({ quiz, onOpenInChat, onRetry 
             {score.correct} / {score.total} ({pct}%)
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => {
+                setCurrentIndex(0);
+                setShowFinalResults(false);
+              }}
+              style={{
+                padding: '9px 18px',
+                background: '#1e293b',
+                color: '#f8fafc',
+                border: '1px solid #334155',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '13px'
+              }}
+            >
+              <FileText size={15} /> Review Questions
+            </button>
+
             <button
               onClick={() => {
                 setUserAnswers({});

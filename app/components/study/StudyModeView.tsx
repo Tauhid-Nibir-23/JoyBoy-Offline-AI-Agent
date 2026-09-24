@@ -832,6 +832,39 @@ export const StudyModeView: React.FC<StudyModeViewProps> = ({
               onRetry={handleGenerate}
             />
           )}
+
+          {/* Useful Empty State when no result generated yet */}
+          {!isGenerating && !(
+            (activeAction === 'explain' && explainResult) ||
+            (activeAction === 'summarize' && summaryResult) ||
+            (activeAction === 'notes' && notesResult) ||
+            (activeAction === 'quiz' && quizResult) ||
+            (activeAction === 'flashcards' && flashcardResult) ||
+            (activeAction === 'plan' && planResult)
+          ) && (
+            <div className="card" style={{ padding: '36px 20px', textAlign: 'center', backgroundColor: '#090d16', border: '1px dashed #334155' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                backgroundColor: 'rgba(217, 119, 6, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 14px auto',
+                color: '#f59e0b'
+              }}>
+                <Sparkles size={24} />
+              </div>
+              <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
+                Ready to Generate {activeAction.charAt(0).toUpperCase() + activeAction.slice(1)}
+              </h3>
+              <p style={{ fontSize: '13px', color: '#94a3b8', maxWidth: '460px', margin: '8px auto 0 auto', lineHeight: 1.5 }}>
+                Select a document from your library or type a study topic above, then click <strong>"Generate {activeAction.charAt(0).toUpperCase() + activeAction.slice(1)}"</strong> to formulate structured offline study material.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

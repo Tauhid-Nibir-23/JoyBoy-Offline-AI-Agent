@@ -579,13 +579,52 @@ export function ModelManagerView() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{ 
-                      fontSize: '12px', 
-                      color: isInstalled ? '#6ee7b7' : m.status === 'Error' ? '#fca5a5' : '#fde68a',
-                      fontWeight: 500
-                    }}>
-                      {m.status}
-                    </div>
+                    {/* Status Badge clearly distinguishing: AVAILABLE, LOADED, NOT FOUND, LOADING, ERROR */}
+                    {(() => {
+                      const isLoaded = engineStatus.isServerRunning && activeModel?.id === m.id;
+                      const isLoading = isActionLoading && activeModel?.id === m.id;
+                      let badgeText = 'NOT FOUND';
+                      let badgeBg = 'rgba(100, 116, 139, 0.2)';
+                      let badgeColor = '#94a3b8';
+                      let badgeBorder = '#475569';
+
+                      if (isLoading) {
+                        badgeText = 'LOADING';
+                        badgeBg = 'rgba(245, 158, 11, 0.2)';
+                        badgeColor = '#fde68a';
+                        badgeBorder = '#f59e0b';
+                      } else if (isLoaded) {
+                        badgeText = 'LOADED';
+                        badgeBg = 'rgba(16, 185, 129, 0.2)';
+                        badgeColor = '#6ee7b7';
+                        badgeBorder = '#10b981';
+                      } else if (m.status === 'Error') {
+                        badgeText = 'ERROR';
+                        badgeBg = 'rgba(239, 68, 68, 0.2)';
+                        badgeColor = '#fca5a5';
+                        badgeBorder = '#ef4444';
+                      } else if (isInstalled) {
+                        badgeText = 'AVAILABLE';
+                        badgeBg = 'rgba(59, 130, 246, 0.2)';
+                        badgeColor = '#93c5fd';
+                        badgeBorder = '#3b82f6';
+                      }
+
+                      return (
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          backgroundColor: badgeBg,
+                          color: badgeColor,
+                          border: `1px solid ${badgeBorder}`,
+                          letterSpacing: '0.4px'
+                        }}>
+                          {badgeText}
+                        </span>
+                      );
+                    })()}
 
                     {isInstalled && !isActive && (
                       <button

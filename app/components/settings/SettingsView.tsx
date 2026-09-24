@@ -92,6 +92,16 @@ export function SettingsView({ onNavigateToModels }: SettingsViewProps) {
     loadAllSettings();
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && confirmDialog?.isOpen) {
+        setConfirmDialog(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmDialog]);
+
   const loadAllSettings = () => {
     try {
       // AI
