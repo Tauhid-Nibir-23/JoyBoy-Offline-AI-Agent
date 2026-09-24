@@ -4,3 +4,12 @@ dist-isolation
 src-tauri/target
 *.log
 .DS_Store
+
+# AI Model Files and Cache (DO NOT commit large models)
+*.gguf
+*.bin
+models/*.gguf
+models/cache/
+models/downloads/
+cache/
+

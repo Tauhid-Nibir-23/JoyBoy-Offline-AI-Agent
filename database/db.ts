@@ -144,6 +144,37 @@ export function executeQuery(query: string, params: any[] = []): any[] {
   return results;
 }
 
+// Settings Queries
+export function getSetting(key: string): string | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT value FROM settings WHERE key = ?', [key]);
+  if (rows.length > 0 && rows[0].value !== undefined) {
+    return String(rows[0].value);
+  }
+  return null;
+}
+
+export function setSetting(key: string, value: string): void {
+  if (!dbInstance) return;
+  executeQuery(
+    'INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ' +
+    'ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP',
+    [key, value]
+  );
+}
+
+export function getAllSettings(): Record<string, string> {
+  if (!dbInstance) return {};
+  const rows = executeQuery('SELECT key, value FROM settings');
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.key) {
+      result[String(row.key)] = String(row.value);
+    }
+  }
+  return result;
+}
+
 // Conversation Queries
 export function getAllConversations(): DBConversation[] {
   if (!dbInstance) return [];

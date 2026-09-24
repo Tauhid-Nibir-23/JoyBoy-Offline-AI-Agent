@@ -1,7 +1,12 @@
 import { AIProvider, ChatMessage } from './provider';
 
 export class MockAIProvider implements AIProvider {
+  public id = 'mock';
   public name = 'Mock Study Assistant';
+
+  public async isAvailable(): Promise<boolean> {
+    return true;
+  }
 
   public async generateResponse(history: ChatMessage[]): Promise<string> {
     // Artificial 600ms delay to simulate local processing & loading state

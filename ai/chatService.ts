@@ -1,5 +1,6 @@
 import { AIProvider, ChatMessage } from './provider';
 import { MockAIProvider } from './mockProvider';
+import { LlamaCppProvider } from './llamaCppProvider';
 import {
   getAllConversations,
   createConversationInDB,
@@ -7,22 +8,71 @@ import {
   deleteConversationFromDB,
   getMessagesByConversationId,
   insertMessageInDB,
+  getSetting,
+  setSetting,
   DBConversation
 } from '../database/db';
 
 export class ChatService {
-  private activeProvider: AIProvider;
+  private customProvider: AIProvider | null = null;
+  private mockProvider: MockAIProvider;
+  private llamaProvider: LlamaCppProvider;
 
   constructor(provider?: AIProvider) {
-    this.activeProvider = provider || new MockAIProvider();
+    this.mockProvider = new MockAIProvider();
+    this.llamaProvider = new LlamaCppProvider();
+    if (provider) {
+      this.customProvider = provider;
+    }
   }
 
   public setProvider(provider: AIProvider): void {
-    this.activeProvider = provider;
+    this.customProvider = provider;
   }
 
-  public getProviderName(): string {
-    return this.activeProvider.name;
+  public getProviderType(): 'mock' | 'llamacpp' | 'auto' {
+    const saved = getSetting('ai_provider');
+    if (saved === 'mock' || saved === 'llamacpp') {
+      return saved;
+    }
+    return 'auto';
+  }
+
+  public setProviderType(type: 'mock' | 'llamacpp' | 'auto'): void {
+    setSetting('ai_provider', type);
+  }
+
+  public async resolveProvider(): Promise<AIProvider> {
+    if (this.customProvider) {
+      return this.customProvider;
+    }
+
+    const type = this.getProviderType();
+
+    if (type === 'mock') {
+      return this.mockProvider;
+    }
+
+    if (type === 'llamacpp') {
+      const isReady = await this.llamaProvider.isAvailable();
+      if (isReady) {
+        return this.llamaProvider;
+      }
+      // If user selected llama.cpp but local inference is unavailable, fall back safely to Mock
+      return this.mockProvider;
+    }
+
+    // 'auto' mode: Use local llama.cpp if ready, otherwise fallback to mock
+    const isReady = await this.llamaProvider.isAvailable();
+    if (isReady) {
+      return this.llamaProvider;
+    }
+    return this.mockProvider;
+  }
+
+  public async getProviderName(): Promise<string> {
+    const provider = await this.resolveProvider();
+    return provider.name;
   }
 
   public getConversations(): DBConversation[] {
@@ -89,8 +139,11 @@ export class ChatService {
       this.renameConversation(conversationId, generatedTitle);
     }
 
+    // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
+    const provider = await this.resolveProvider();
+
     // Generate response via AI provider
-    const assistantText = await this.activeProvider.generateResponse(currentMsgs);
+    const assistantText = await provider.generateResponse(currentMsgs);
 
     const assistantMsgId = 'msg_a_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const assistantMsg: ChatMessage = {

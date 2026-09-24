@@ -1,3 +1,5 @@
+export * from './environment/index';
+
 export interface SystemStatus {
   os: string;
   isOnline: boolean;

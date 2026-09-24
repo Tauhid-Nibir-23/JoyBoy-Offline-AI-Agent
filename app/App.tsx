@@ -14,17 +14,22 @@ import {
 import { initDatabase, getDatabaseStatus } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
+import { ModelManagerView } from './components/settings/ModelManagerView';
+import { chatService } from '../ai/chatService';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'sync' | 'settings'>('chat');
   const [sysStatus, setSysStatus] = useState<SystemStatus>(detectEnvironment());
   const [dbInfo, setDbInfo] = useState<{ initialized: boolean; tables: string[] }>({ initialized: false, tables: [] });
+  const [aiProviderName, setAiProviderName] = useState<string>('Mock Assistant');
 
   useEffect(() => {
     async function setupDb() {
       const ok = await initDatabase();
       if (ok) {
         setDbInfo(getDatabaseStatus());
+        const pName = await chatService.getProviderName();
+        setAiProviderName(pName);
       }
     }
     setupDb();
@@ -129,7 +134,7 @@ export default function App() {
             <div className="status-badge badge-neutral">
               <Cpu size={14} />
               <span className="status-dot dot-amber"></span>
-              <span>AI: {sysStatus.aiStatus}</span>
+              <span>AI: {aiProviderName}</span>
             </div>
 
             {/* Internet Status Badge */}
@@ -188,28 +193,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'settings' && (
-            <div className="card">
-              <h3>Settings & Configuration</h3>
-              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div>
-                  <strong>Database Tables Initialized:</strong>
-                  <div style={{ color: '#94a3b8', marginTop: '4px', fontSize: '13px' }}>
-                    {dbInfo.tables.length > 0 ? dbInfo.tables.join(', ') : 'Initializing...'}
-                  </div>
-                </div>
-                <div>
-                  <strong>Model Path:</strong>
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value="[Not set - Model Manager ready for Phase 2/3]" 
-                    style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#94a3b8' }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === 'settings' && <ModelManagerView />}
         </section>
       </main>
     </div>
