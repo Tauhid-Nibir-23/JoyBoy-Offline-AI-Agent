@@ -15,6 +15,7 @@ import { initDatabase, getDatabaseStatus } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
 import { ModelManagerView } from './components/settings/ModelManagerView';
+import { DocumentLibraryView } from './components/documents/DocumentLibraryView';
 import { chatService } from '../ai/chatService';
 
 export default function App() {
@@ -249,14 +250,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'documents' && (
-            <div className="card">
-              <h3>Document System (Placeholder)</h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
-                Supported formats: PDF, TXT, MD, DOCX, Code files. Drop files to ingest locally.
-              </p>
-            </div>
-          )}
+          {activeTab === 'documents' && <DocumentLibraryView />}
 
           {activeTab === 'sync' && (
             <div className="card">

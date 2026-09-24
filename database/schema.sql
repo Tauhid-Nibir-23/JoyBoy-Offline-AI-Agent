@@ -22,6 +22,21 @@ CREATE TABLE IF NOT EXISTS messages (
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    original_path TEXT,
+    file_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_hash TEXT NOT NULL UNIQUE,
+    imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modified_at TIMESTAMP,
+    extraction_status TEXT CHECK(extraction_status IN ('Imported', 'Processing', 'Ready', 'Failed')) NOT NULL DEFAULT 'Imported',
+    extracted_text TEXT,
+    character_count INTEGER DEFAULT 0,
+    error_message TEXT
+);
+
 -- Default Settings Insertions
 INSERT OR IGNORE INTO settings (key, value) VALUES 
 ('app_name', 'Offline Study AI'),

@@ -31,6 +31,21 @@ export interface DBMessage {
   created_at: string;
 }
 
+export interface DBDocument {
+  id: string;
+  filename: string;
+  original_path: string | null;
+  file_type: string;
+  file_size: number;
+  file_hash: string;
+  imported_at: string;
+  modified_at: string | null;
+  extraction_status: 'Imported' | 'Processing' | 'Ready' | 'Failed';
+  extracted_text: string | null;
+  character_count: number;
+  error_message: string | null;
+}
+
 const INITIAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -52,6 +67,21 @@ CREATE TABLE IF NOT EXISTS messages (
     content TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    original_path TEXT,
+    file_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_hash TEXT NOT NULL UNIQUE,
+    imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modified_at TIMESTAMP,
+    extraction_status TEXT CHECK(extraction_status IN ('Imported', 'Processing', 'Ready', 'Failed')) NOT NULL DEFAULT 'Imported',
+    extracted_text TEXT,
+    character_count INTEGER DEFAULT 0,
+    error_message TEXT
 );
 
 INSERT OR IGNORE INTO settings (key, value) VALUES 
@@ -125,7 +155,7 @@ export async function initDatabase(): Promise<boolean> {
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
-      const requiredTables = ['settings', 'conversations', 'messages'];
+      const requiredTables = ['settings', 'conversations', 'messages', 'documents'];
       const missing = requiredTables.filter((t) => !tables.includes(t));
       if (missing.length > 0) {
         throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
@@ -278,3 +308,111 @@ export function insertMessageInDB(msg: DBMessage): DBMessage {
   executeQuery('UPDATE conversations SET updated_at = ? WHERE id = ?', [msg.created_at, msg.conversation_id]);
   return msg;
 }
+
+// Document Queries
+export function getAllDocuments(): DBDocument[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery('SELECT * FROM documents ORDER BY imported_at DESC');
+  return rows.map((r) => ({
+    id: String(r.id),
+    filename: String(r.filename),
+    original_path: r.original_path ? String(r.original_path) : null,
+    file_type: String(r.file_type),
+    file_size: Number(r.file_size || 0),
+    file_hash: String(r.file_hash),
+    imported_at: String(r.imported_at),
+    modified_at: r.modified_at ? String(r.modified_at) : null,
+    extraction_status: r.extraction_status as DBDocument['extraction_status'],
+    extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
+    character_count: Number(r.character_count || 0),
+    error_message: r.error_message ? String(r.error_message) : null
+  }));
+}
+
+export function getDocumentById(id: string): DBDocument | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM documents WHERE id = ?', [id]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    filename: String(r.filename),
+    original_path: r.original_path ? String(r.original_path) : null,
+    file_type: String(r.file_type),
+    file_size: Number(r.file_size || 0),
+    file_hash: String(r.file_hash),
+    imported_at: String(r.imported_at),
+    modified_at: r.modified_at ? String(r.modified_at) : null,
+    extraction_status: r.extraction_status as DBDocument['extraction_status'],
+    extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
+    character_count: Number(r.character_count || 0),
+    error_message: r.error_message ? String(r.error_message) : null
+  };
+}
+
+export function getDocumentByHash(fileHash: string): DBDocument | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM documents WHERE file_hash = ?', [fileHash]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    filename: String(r.filename),
+    original_path: r.original_path ? String(r.original_path) : null,
+    file_type: String(r.file_type),
+    file_size: Number(r.file_size || 0),
+    file_hash: String(r.file_hash),
+    imported_at: String(r.imported_at),
+    modified_at: r.modified_at ? String(r.modified_at) : null,
+    extraction_status: r.extraction_status as DBDocument['extraction_status'],
+    extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
+    character_count: Number(r.character_count || 0),
+    error_message: r.error_message ? String(r.error_message) : null
+  };
+}
+
+export function insertDocumentInDB(doc: DBDocument): DBDocument {
+  executeQuery(
+    `INSERT INTO documents (
+      id, filename, original_path, file_type, file_size, file_hash,
+      imported_at, modified_at, extraction_status, extracted_text,
+      character_count, error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      doc.id,
+      doc.filename,
+      doc.original_path,
+      doc.file_type,
+      doc.file_size,
+      doc.file_hash,
+      doc.imported_at,
+      doc.modified_at,
+      doc.extraction_status,
+      doc.extracted_text,
+      doc.character_count,
+      doc.error_message
+    ]
+  );
+  return doc;
+}
+
+export function updateDocumentInDB(id: string, updates: Partial<DBDocument>): void {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  for (const [key, val] of Object.entries(updates)) {
+    if (key === 'id') continue;
+    fields.push(`${key} = ?`);
+    values.push(val);
+  }
+
+  if (fields.length === 0) return;
+
+  values.push(id);
+  executeQuery(`UPDATE documents SET ${fields.join(', ')} WHERE id = ?`, values);
+}
+
+export function deleteDocumentFromDB(id: string): void {
+  executeQuery('DELETE FROM documents WHERE id = ?', [id]);
+}
+
