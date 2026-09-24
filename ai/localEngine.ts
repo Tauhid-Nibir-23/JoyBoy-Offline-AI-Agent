@@ -25,22 +25,32 @@ export interface EngineStatusInfo {
   details: string;
 }
 
+export function isTauriAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  const internals = (window as any).__TAURI_INTERNALS__;
+  return !!(internals && typeof internals.invoke === 'function');
+}
+
+async function invokeTauri<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (typeof window !== 'undefined') {
+    const internals = (window as any).__TAURI_INTERNALS__;
+    if (internals && typeof internals.invoke === 'function') {
+      return await internals.invoke(command, args);
+    }
+    const tauriCore = await import('@tauri-apps/api/core').catch(() => null);
+    if (tauriCore && typeof tauriCore.invoke === 'function') {
+      return await tauriCore.invoke(command, args);
+    }
+  }
+  throw new Error('Tauri desktop runtime is not available in the current environment.');
+}
+
 async function tryTauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
   try {
-    if (typeof window !== 'undefined') {
-      const internals = (window as any).__TAURI_INTERNALS__;
-      if (internals && typeof internals.invoke === 'function') {
-        return await internals.invoke(command, args);
-      }
-      const tauriCore = await import('@tauri-apps/api/core').catch(() => null);
-      if (tauriCore && typeof tauriCore.invoke === 'function') {
-        return await tauriCore.invoke(command, args);
-      }
-    }
+    return await invokeTauri<T>(command, args);
   } catch {
-    // Tauri not available
+    return null;
   }
-  return null;
 }
 
 export class LocalAIEngine {
@@ -119,7 +129,7 @@ export class LocalAIEngine {
 
     // Try starting llama-server once
     try {
-      const port = await tryTauriInvoke<number>('start_local_llama_server', {
+      const port = await invokeTauri<number>('start_local_llama_server', {
         modelPath,
         port: 8088,
         threads: this.config.cpuThreads,
@@ -139,8 +149,8 @@ export class LocalAIEngine {
         this.serverPort = port;
         return true;
       }
-    } catch {
-      // llama-server not available; fallback to CLI mode
+    } catch (startErr) {
+      console.warn('llama-server startup via Tauri failed:', startErr);
     }
 
     // Node.js fallback (for integration testing & scripts)
@@ -348,21 +358,26 @@ export class LocalAIEngine {
       // 3. Fallback: One-shot CLI inference via Tauri if server streaming wasn't used
       if (!accumulatedText) {
         const prompt = formatToChatML(messages);
-        const cliResult = await tryTauriInvoke<string>('run_local_inference', {
-          modelPath,
-          prompt,
-          maxTokens,
-          temperature
-        });
+        try {
+          const cliResult = await invokeTauri<string>('run_local_inference', {
+            modelPath,
+            prompt,
+            maxTokens,
+            temperature
+          });
 
-        if (cliResult === null) {
-          throw new Error('Local inference invocation failed or Tauri runtime unavailable.');
-        }
+          if (!cliResult) {
+            throw new Error('Local inference engine returned an empty response.');
+          }
 
-        accumulatedText = cliResult;
-        tokenCount = Math.ceil(accumulatedText.length / 3.5);
-        if (options?.callbacks?.onToken) {
-          options.callbacks.onToken(accumulatedText);
+          accumulatedText = cliResult;
+          tokenCount = Math.ceil(accumulatedText.length / 3.5);
+          if (options?.callbacks?.onToken) {
+            options.callbacks.onToken(accumulatedText);
+          }
+        } catch (cliErr: any) {
+          const reason = cliErr?.message || String(cliErr);
+          throw new Error(`Local inference failed: ${reason}`);
         }
       }
 

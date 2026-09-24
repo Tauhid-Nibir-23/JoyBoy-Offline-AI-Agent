@@ -25,66 +25,82 @@ pub struct LlamaServerStatus {
     pub loaded_model_path: Option<String>,
 }
 
-pub fn find_llama_server() -> Option<String> {
-    let candidates = if cfg!(target_os = "windows") {
-        vec![
-            "llama-server.exe",
-            "./bin/llama-server.exe",
-            "../bin/llama-server.exe",
-            "models/bin/llama-server.exe",
-            "../models/bin/llama-server.exe",
-            "llama-server",
-        ]
-    } else {
-        vec![
-            "llama-server",
-            "./bin/llama-server",
-            "../bin/llama-server",
-            "models/bin/llama-server",
-            "../models/bin/llama-server",
-        ]
-    };
+fn find_binary(base_name: &str) -> Option<String> {
+    let mut names = vec![base_name.to_string()];
+    if cfg!(target_os = "windows") && !base_name.ends_with(".exe") {
+        names.push(format!("{}.exe", base_name));
+    }
 
-    for binary in candidates {
-        if binary.contains('/') || binary.contains('\\') {
-            if !Path::new(binary).exists() {
-                continue;
+    let mut candidate_paths = Vec::new();
+
+    // 1. Check relative to current working directory
+    for name in &names {
+        candidate_paths.push(std::path::PathBuf::from(name));
+        candidate_paths.push(std::path::PathBuf::from("bin").join(name));
+        candidate_paths.push(std::path::PathBuf::from("./bin").join(name));
+        candidate_paths.push(std::path::PathBuf::from("../bin").join(name));
+        candidate_paths.push(std::path::PathBuf::from("models/bin").join(name));
+        candidate_paths.push(std::path::PathBuf::from("../models/bin").join(name));
+    }
+
+    // 2. Check relative to executable location
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            for name in &names {
+                candidate_paths.push(exe_dir.join(name));
+                candidate_paths.push(exe_dir.join("bin").join(name));
+                if let Some(p1) = exe_dir.parent() {
+                    candidate_paths.push(p1.join(name));
+                    candidate_paths.push(p1.join("bin").join(name));
+                    if let Some(p2) = p1.parent() {
+                        candidate_paths.push(p2.join(name));
+                        candidate_paths.push(p2.join("bin").join(name));
+                    }
+                }
             }
         }
-        return Some(binary.to_string());
     }
+
+    // Check if any candidate path exists as a file on disk
+    for path in candidate_paths {
+        if path.is_file() {
+            if let Ok(canon) = path.canonicalize() {
+                let s = canon.to_string_lossy().to_string();
+                return Some(s.strip_prefix(r"\\?\").unwrap_or(&s).to_string());
+            }
+            return Some(path.to_string_lossy().to_string());
+        }
+    }
+
+    // 3. Fallback: check if available in system PATH
+    for name in &names {
+        let output = if cfg!(target_os = "windows") {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x08000000;
+            Command::new(name)
+                .creation_flags(CREATE_NO_WINDOW)
+                .arg("--version")
+                .output()
+        } else {
+            Command::new(name).arg("--version").output()
+        };
+
+        if let Ok(out) = output {
+            if out.status.success() {
+                return Some(name.clone());
+            }
+        }
+    }
+
     None
 }
 
-pub fn find_llama_cli() -> Option<String> {
-    let candidates = if cfg!(target_os = "windows") {
-        vec![
-            "llama-cli.exe",
-            "./bin/llama-cli.exe",
-            "../bin/llama-cli.exe",
-            "models/bin/llama-cli.exe",
-            "../models/bin/llama-cli.exe",
-            "llama-cli",
-        ]
-    } else {
-        vec![
-            "llama-cli",
-            "./bin/llama-cli",
-            "../bin/llama-cli",
-            "models/bin/llama-cli",
-            "../models/bin/llama-cli",
-        ]
-    };
+pub fn find_llama_server() -> Option<String> {
+    find_binary("llama-server")
+}
 
-    for binary in candidates {
-        if binary.contains('/') || binary.contains('\\') {
-            if !Path::new(binary).exists() {
-                continue;
-            }
-        }
-        return Some(binary.to_string());
-    }
-    None
+pub fn find_llama_cli() -> Option<String> {
+    find_binary("llama-cli")
 }
 
 fn resolve_model_path(model_path: &str) -> String {
@@ -98,7 +114,10 @@ fn resolve_model_path(model_path: &str) -> String {
     }
     model_path_buf
         .canonicalize()
-        .map(|p| p.to_string_lossy().to_string())
+        .map(|p| {
+            let s = p.to_string_lossy().to_string();
+            s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+        })
         .unwrap_or_else(|_| model_path_buf.to_string_lossy().to_string())
 }
 
@@ -110,32 +129,53 @@ pub fn check_llama_engine() -> LlamaEngineInfo {
     let is_server = srv.is_some();
 
     if let Some(ref bin_path) = binary {
-        let output = if cfg!(target_os = "windows") {
+        let mut cmd = Command::new(bin_path);
+        #[cfg(target_os = "windows")]
+        {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x08000000;
-            Command::new(bin_path)
-                .creation_flags(CREATE_NO_WINDOW)
-                .arg("--version")
-                .output()
-        } else {
-            Command::new(bin_path).arg("--version").output()
-        };
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
 
-        let ver = output.ok().and_then(|out| {
+        if let Some(parent) = Path::new(bin_path).parent() {
+            if parent.exists() {
+                cmd.current_dir(parent);
+            }
+        }
+
+        let output = cmd.arg("--version").output();
+
+        let ver = output.as_ref().ok().and_then(|out| {
             if out.status.success() {
-                let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let out_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                let err_str = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                let v = if !out_str.is_empty() { out_str } else { err_str };
                 if v.is_empty() { None } else { Some(v) }
             } else {
                 None
             }
         });
 
-        LlamaEngineInfo {
-            is_available: true,
-            binary_path: Some(bin_path.clone()),
-            version: ver,
-            details: format!("Found local llama.cpp engine: {}", bin_path),
-            is_server_available: is_server,
+        if let Some(version_str) = ver {
+            LlamaEngineInfo {
+                is_available: true,
+                binary_path: Some(bin_path.clone()),
+                version: Some(version_str),
+                details: format!("Found local llama.cpp engine: {}", bin_path),
+                is_server_available: is_server,
+            }
+        } else {
+            let err_details = match output {
+                Ok(out) => format!("exit code {:?}, stdout: '{}', stderr: '{}'", out.status.code(), String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)),
+                Err(e) => format!("exec error: {}", e),
+            };
+            LlamaEngineInfo {
+                is_available: false,
+                binary_path: None,
+                version: None,
+                details: format!("Found candidate at {} but failed verification: {}", bin_path, err_details),
+                is_server_available: false,
+            }
         }
     } else {
         LlamaEngineInfo {
@@ -309,3 +349,5 @@ pub fn run_inference(
         Err(format!("llama.cpp execution failed: {}", stderr.trim()))
     }
 }
+
+
