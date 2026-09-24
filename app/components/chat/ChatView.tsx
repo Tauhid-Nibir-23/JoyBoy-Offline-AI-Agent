@@ -211,37 +211,32 @@ export function ChatView() {
         backgroundColor: '#070a12',
         overflow: 'hidden'
       }}>
-        {/* Dynamic Background Art Layer (transitions to higher blur & lower opacity once conversation begins) */}
+        {/* Background Art Layer (stays visible, slightly lower opacity during conversation) */}
         <div 
           aria-hidden="true"
           style={{
             position: 'absolute',
-            inset: '-12px',
+            inset: 0,
             backgroundImage: "url('/assets/chat_bg.png')",
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            filter: messages.length > 0 
-              ? 'blur(22px) brightness(0.30) saturate(0.75)' 
-              : 'blur(0px) brightness(0.85) saturate(1.05)',
-            opacity: messages.length > 0 ? 0.20 : 0.85,
-            transform: messages.length > 0 ? 'scale(1.06)' : 'scale(1)',
-            transition: 'filter 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, transform 0.6s ease',
+            opacity: messages.length > 0 ? 0.60 : 0.85,
+            transition: 'opacity 0.4s ease',
             pointerEvents: 'none',
             zIndex: 0
           }} 
         />
 
-        {/* Dynamic Readability Tint Overlay */}
+        {/* Subtle Ambient Tint Overlay for Readability */}
         <div 
           aria-hidden="true"
           style={{
             position: 'absolute',
             inset: 0,
             background: messages.length > 0
-              ? 'radial-gradient(ellipse at 50% 30%, rgba(10, 15, 26, 0.88) 0%, rgba(6, 9, 16, 0.96) 100%)'
-              : 'linear-gradient(180deg, rgba(7, 11, 20, 0.25) 0%, rgba(7, 11, 20, 0.45) 100%)',
-            backdropFilter: messages.length > 0 ? 'blur(10px)' : 'none',
-            transition: 'background 0.6s ease, backdrop-filter 0.6s ease',
+              ? 'linear-gradient(180deg, rgba(7, 11, 20, 0.30) 0%, rgba(7, 11, 20, 0.45) 100%)'
+              : 'linear-gradient(180deg, rgba(7, 11, 20, 0.15) 0%, rgba(7, 11, 20, 0.30) 100%)',
+            transition: 'background 0.4s ease',
             pointerEvents: 'none',
             zIndex: 0
           }} 
