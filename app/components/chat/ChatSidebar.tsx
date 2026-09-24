@@ -83,7 +83,11 @@ export function ChatSidebar({
       width: `${width}px`, 
       minWidth: `${width}px`,
       backgroundColor: '#0c121e', 
-      borderRight: '1px solid rgba(217, 119, 6, 0.2)', 
+      backgroundImage: `linear-gradient(180deg, rgba(12, 18, 30, 0.55) 0%, rgba(12, 18, 30, 0.65) 45%, rgba(7, 11, 20, 0.85) 100%), url('/assets/chat_sidebar_bg.jpg')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center top',
+      backgroundRepeat: 'no-repeat',
+      borderRight: '1px solid rgba(217, 119, 6, 0.25)', 
       display: 'flex', 
       flexDirection: 'column',
       height: '100%',
@@ -91,7 +95,12 @@ export function ChatSidebar({
       userSelect: 'none'
     }}>
       {/* New Chat Action Header */}
-      <div style={{ padding: '12px', borderBottom: '1px solid rgba(217, 119, 6, 0.2)' }}>
+      <div style={{ 
+        padding: '12px', 
+        borderBottom: '1px solid rgba(217, 119, 6, 0.25)',
+        backgroundColor: 'rgba(10, 15, 29, 0.5)',
+        backdropFilter: 'blur(8px)'
+      }}>
         <button 
           onClick={onNewChat}
           title="Create New Chat (Ctrl+N)"
@@ -106,8 +115,9 @@ export function ChatSidebar({
           marginTop: '10px', 
           display: 'flex', 
           alignItems: 'center', 
-          backgroundColor: 'rgba(26, 34, 51, 0.8)', 
-          border: '1px solid rgba(217, 119, 6, 0.25)',
+          backgroundColor: 'rgba(20, 28, 44, 0.75)', 
+          backdropFilter: 'blur(6px)',
+          border: '1px solid rgba(217, 119, 6, 0.3)',
           borderRadius: '6px', 
           padding: '6px 10px',
           gap: '6px'
@@ -133,7 +143,19 @@ export function ChatSidebar({
       {/* Conversation List */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '8px' }}>
         {filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', color: '#64748b', fontSize: '13px', marginTop: '30px', padding: '0 10px' }}>
+          <div style={{ 
+            textAlign: 'center', 
+            color: '#cbd5e1', 
+            fontSize: '12px', 
+            marginTop: '30px', 
+            padding: '14px 12px',
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(8px)',
+            borderRadius: '8px',
+            border: '1px solid rgba(217, 119, 6, 0.25)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+            margin: '20px 8px'
+          }}>
             {searchQuery ? 'No matching chats found' : 'No conversation history yet. Click "New Chat" to begin!'}
           </div>
         ) : (
@@ -153,8 +175,10 @@ export function ChatSidebar({
                   padding: '9px 10px',
                   borderRadius: '6px',
                   marginBottom: '4px',
-                  backgroundColor: isActive ? 'rgba(180, 83, 9, 0.25)' : 'transparent',
-                  border: isActive ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                  backgroundColor: isActive ? 'rgba(180, 83, 9, 0.4)' : 'rgba(15, 23, 42, 0.55)',
+                  backdropFilter: 'blur(6px)',
+                  border: isActive ? '1px solid rgba(245, 158, 11, 0.5)' : '1px solid rgba(255, 255, 255, 0.06)',
+                  boxShadow: isActive ? '0 2px 8px rgba(217, 119, 6, 0.25)' : 'none',
                   color: isActive ? '#fef3c7' : '#94a3b8',
                   cursor: 'pointer',
                   fontSize: '13px',
