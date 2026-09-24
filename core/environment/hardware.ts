@@ -1,7 +1,5 @@
 export * from './types';
 import { HardwareProfile } from './types';
-import { windowsHardwareAdapter } from './windows';
-import { linuxHardwareAdapter } from './linux';
 
 // Safely attempt Tauri invoke if available
 async function tryTauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
@@ -48,8 +46,8 @@ export async function detectHardware(): Promise<HardwareProfile> {
     return tauriProfile;
   }
 
-  // 2. Fall back to platform-specific adapters for browser/Node test environments
-  const isWindows = typeof process !== 'undefined'
+  // 2. Fall back to platform-specific adapters dynamically to eliminate circular dependencies
+  const isWindows = typeof process !== 'undefined' 
     ? process.platform === 'win32'
     : typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 
@@ -58,10 +56,12 @@ export async function detectHardware(): Promise<HardwareProfile> {
     : typeof navigator !== 'undefined' && /Linux/i.test(navigator.userAgent);
 
   if (isWindows) {
+    const { windowsHardwareAdapter } = await import('./windows');
     return await windowsHardwareAdapter.detect();
   }
 
   if (isLinux) {
+    const { linuxHardwareAdapter } = await import('./linux');
     return await linuxHardwareAdapter.detect();
   }
 
