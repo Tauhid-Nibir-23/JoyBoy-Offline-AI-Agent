@@ -12,4 +12,6 @@ models/*.gguf
 models/cache/
 models/downloads/
 cache/
+bin/
+models/bin/
 

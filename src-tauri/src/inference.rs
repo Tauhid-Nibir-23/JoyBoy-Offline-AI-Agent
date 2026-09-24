@@ -33,8 +33,12 @@ pub fn check_llama_engine() -> LlamaEngineInfo {
             "llama-cli.exe",
             "./bin/llama-server.exe",
             "./bin/llama-cli.exe",
+            "../bin/llama-server.exe",
+            "../bin/llama-cli.exe",
             "models/bin/llama-server.exe",
             "models/bin/llama-cli.exe",
+            "../models/bin/llama-server.exe",
+            "../models/bin/llama-cli.exe",
             "llama-server",
             "llama-cli",
         ]
@@ -44,8 +48,12 @@ pub fn check_llama_engine() -> LlamaEngineInfo {
             "llama-cli",
             "./bin/llama-server",
             "./bin/llama-cli",
+            "../bin/llama-server",
+            "../bin/llama-cli",
             "models/bin/llama-server",
             "models/bin/llama-cli",
+            "../models/bin/llama-server",
+            "../models/bin/llama-cli",
         ]
     };
 

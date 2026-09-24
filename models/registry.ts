@@ -17,6 +17,19 @@ export const BASELINE_MODEL: ModelProfile = {
 export const INITIAL_REGISTERED_MODELS: ModelProfile[] = [
   BASELINE_MODEL,
   {
+    id: 'qwen2.5-0.5b-instruct-q4_k_m',
+    name: 'Qwen 2.5 0.5B Instruct',
+    provider: 'Qwen',
+    format: 'GGUF',
+    quantization: 'Q4_K_M',
+    fileName: 'qwen2.5-0.5b-instruct-q4_k_m.gguf',
+    expectedSize: 491_400_032,
+    contextLength: 4096,
+    status: 'Not Installed',
+    recommendedRamGb: 4,
+    description: 'Ultra-fast lightweight official Qwen model for local inference and study verification.'
+  },
+  {
     id: 'llama-3.2-3b-q4_k_m',
     name: 'Llama 3.2 3B',
     provider: 'Meta',

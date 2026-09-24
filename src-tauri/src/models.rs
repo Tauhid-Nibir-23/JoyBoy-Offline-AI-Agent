@@ -23,7 +23,14 @@ pub struct ModelValidationResult {
 }
 
 pub fn scan_directory(dir_path_str: &str) -> Result<Vec<DiscoveredModelFile>, String> {
-    let dir_path = PathBuf::from(dir_path_str);
+    let mut dir_path = PathBuf::from(dir_path_str);
+    if !dir_path.exists() && (dir_path_str.starts_with("./") || !dir_path_str.starts_with('/')) {
+        let rel = dir_path_str.strip_prefix("./").unwrap_or(dir_path_str);
+        let alt = PathBuf::from(format!("../{}", rel));
+        if alt.exists() {
+            dir_path = alt;
+        }
+    }
     if !dir_path.exists() {
         return Err(format!("Directory does not exist: {}", dir_path_str));
     }
@@ -71,7 +78,14 @@ pub fn scan_directory(dir_path_str: &str) -> Result<Vec<DiscoveredModelFile>, St
 }
 
 pub fn validate_file(file_path_str: &str) -> ModelValidationResult {
-    let path = Path::new(file_path_str);
+    let mut path = PathBuf::from(file_path_str);
+    if !path.exists() && (file_path_str.starts_with("./") || !file_path_str.starts_with('/')) {
+        let rel = file_path_str.strip_prefix("./").unwrap_or(file_path_str);
+        let alt = PathBuf::from(format!("../{}", rel));
+        if alt.exists() {
+            path = alt;
+        }
+    }
     if !path.exists() {
         return ModelValidationResult {
             is_valid: false,
@@ -81,7 +95,7 @@ pub fn validate_file(file_path_str: &str) -> ModelValidationResult {
         };
     }
 
-    let metadata = match fs::metadata(path) {
+    let metadata = match fs::metadata(&path) {
         Ok(m) => m,
         Err(e) => {
             return ModelValidationResult {
@@ -112,7 +126,7 @@ pub fn validate_file(file_path_str: &str) -> ModelValidationResult {
         };
     }
 
-    if validate_gguf_magic(path) {
+    if validate_gguf_magic(&path) {
         ModelValidationResult {
             is_valid: true,
             file_size_bytes: size,
