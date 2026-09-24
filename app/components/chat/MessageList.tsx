@@ -1,6 +1,6 @@
-import React, { useEffect, useRef } from 'react';
-import { User, Bot, BookOpen, FileText } from 'lucide-react';
-import { ChatMessage } from '../../../ai/provider';
+import React, { useState, useEffect, useRef } from 'react';
+import { User, BookOpen, FileText, Copy, Check, RotateCw, AlertCircle, X, ExternalLink } from 'lucide-react';
+import { ChatMessage, ChatMessageSource } from '../../../ai/provider';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface MessageListProps {
@@ -8,14 +8,35 @@ interface MessageListProps {
   isLoading: boolean;
   streamingContent?: string;
   onSuggestionClick?: (prompt: string) => void;
+  onRegenerate?: () => void;
+  onRetry?: () => void;
 }
 
-export function MessageList({ messages, isLoading, streamingContent, onSuggestionClick }: MessageListProps) {
+export function MessageList({
+  messages,
+  isLoading,
+  streamingContent,
+  onSuggestionClick,
+  onRegenerate,
+  onRetry
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [inspectedSource, setInspectedSource] = useState<ChatMessageSource | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading, streamingContent]);
+
+  const handleCopyMessage = (msgId: string, content: string) => {
+    // Strip performance footer before copying
+    const cleaned = content.replace(/\n\n\*(Local AI|Mock Assistant)[^*]+\*$/, '').trim();
+    navigator.clipboard.writeText(cleaned);
+    setCopiedId(msgId);
+    setTimeout(() => {
+      setCopiedId((curr) => (curr === msgId ? null : curr));
+    }, 2000);
+  };
 
   if (messages.length === 0 && !isLoading) {
     return (
@@ -42,7 +63,6 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            {/* Ambient golden aura behind the crest */}
             <div style={{
               position: 'absolute',
               width: '140px',
@@ -132,6 +152,9 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
     );
   }
 
+  // Find the last assistant message index for regeneration
+  const lastAssistantIdx = messages.map(m => m.role).lastIndexOf('assistant');
+
   return (
     <div style={{
       flex: 1,
@@ -141,10 +164,11 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
       flexDirection: 'column',
       gap: '20px'
     }}>
-      {messages.map((msg) => {
+      {messages.map((msg, index) => {
         const isUser = msg.role === 'user';
         const isLocalAI = msg.providerId === 'llamacpp' || msg.content.includes('*Local AI');
-        const isMockAI = msg.role === 'assistant' && !isLocalAI;
+        const isError = !isUser && msg.content.includes('⚠️ **Local AI Error:**');
+        const isLatestAssistant = index === lastAssistantIdx;
 
         return (
           <div
@@ -193,21 +217,21 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                   alignItems: 'center', 
                   gap: '6px', 
                   marginLeft: '4px',
-                  color: isLocalAI ? '#34d399' : '#fbbf24'
+                  color: isError ? '#f87171' : isLocalAI ? '#34d399' : '#fbbf24'
                 }}>
                   <span style={{ 
                     width: '6px', 
                     height: '6px', 
                     borderRadius: '50%', 
-                    backgroundColor: isLocalAI ? '#10b981' : '#f59e0b' 
+                    backgroundColor: isError ? '#ef4444' : isLocalAI ? '#10b981' : '#f59e0b' 
                   }}></span>
-                  <span>{isLocalAI ? 'Local AI · GGUF' : 'Mock AI · Offline Fallback'}</span>
+                  <span>{isError ? 'Inference Notice' : isLocalAI ? 'Local AI · GGUF' : 'Mock AI · Offline Fallback'}</span>
                 </div>
               )}
 
               <div style={{
-                backgroundColor: isUser ? 'rgba(30, 64, 150, 0.94)' : 'rgba(16, 22, 35, 0.96)',
-                border: isUser ? '1px solid rgba(96, 165, 250, 0.5)' : '1px solid rgba(217, 119, 6, 0.35)',
+                backgroundColor: isUser ? 'rgba(30, 64, 150, 0.94)' : isError ? 'rgba(40, 16, 16, 0.95)' : 'rgba(16, 22, 35, 0.96)',
+                border: isUser ? '1px solid rgba(96, 165, 250, 0.5)' : isError ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(217, 119, 6, 0.35)',
                 padding: '13px 18px',
                 borderRadius: '12px',
                 color: '#f8fafc',
@@ -221,6 +245,8 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                 ) : (
                   <div>
                     <MarkdownRenderer content={msg.content} />
+                    
+                    {/* Sources section if available */}
                     {msg.sources && msg.sources.length > 0 && (
                       <div style={{
                         marginTop: '12px',
@@ -241,13 +267,14 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                           letterSpacing: '0.5px'
                         }}>
                           <BookOpen size={13} />
-                          <span>Sources ({msg.sources.length})</span>
+                          <span>Sources ({msg.sources.length}) — Click to Inspect</span>
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                           {msg.sources.map((s, sIdx) => (
-                            <div
+                            <button
                               key={sIdx}
-                              title={s.snippet ? `Excerpt: ${s.snippet}` : undefined}
+                              onClick={() => setInspectedSource(s)}
+                              title="Click to inspect source citation excerpt"
                               style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -258,8 +285,8 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                                 padding: '3px 8px',
                                 fontSize: '12px',
                                 color: '#fed7aa',
-                                cursor: 'default',
-                                userSelect: 'none'
+                                cursor: 'pointer',
+                                transition: 'all 0.15s ease'
                               }}
                             >
                               <FileText size={12} style={{ color: '#f59e0b' }} />
@@ -277,11 +304,85 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                               }}>
                                 {Math.round(s.similarity * 100)}% match
                               </span>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       </div>
                     )}
+
+                    {/* Action Bar for Assistant Messages */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      marginTop: '10px',
+                      paddingTop: '8px',
+                      borderTop: '1px solid rgba(148, 163, 184, 0.1)'
+                    }}>
+                      <button
+                        onClick={() => handleCopyMessage(msg.id, msg.content)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          background: 'none',
+                          border: 'none',
+                          color: copiedId === msg.id ? '#10b981' : '#94a3b8',
+                          fontSize: '11.5px',
+                          cursor: 'pointer',
+                          padding: '2px 6px',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        {copiedId === msg.id ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
+                        <span>{copiedId === msg.id ? 'Copied Response' : 'Copy'}</span>
+                      </button>
+
+                      {isLatestAssistant && !isLoading && onRegenerate && !isError && (
+                        <button
+                          onClick={onRegenerate}
+                          title="Regenerate last response"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'none',
+                            border: 'none',
+                            color: '#fbbf24',
+                            fontSize: '11.5px',
+                            cursor: 'pointer',
+                            padding: '2px 6px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <RotateCw size={12} />
+                          <span>Regenerate</span>
+                        </button>
+                      )}
+
+                      {isError && onRetry && (
+                        <button
+                          onClick={onRetry}
+                          title="Retry generation"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            border: '1px solid #ef4444',
+                            color: '#fca5a5',
+                            fontSize: '11.5px',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            padding: '2px 8px',
+                            borderRadius: '4px'
+                          }}
+                        >
+                          <RotateCw size={12} />
+                          <span>Retry</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -361,6 +462,100 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
                   Thinking & formulating study notes...
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Source Citation Inspection Modal */}
+      {inspectedSource && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: '#0f172a',
+            border: '1px solid #d97706',
+            borderRadius: '12px',
+            padding: '20px',
+            maxWidth: '560px',
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.85)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FileText size={18} style={{ color: '#f59e0b' }} />
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
+                  {inspectedSource.filename}
+                </h3>
+              </div>
+              <button
+                onClick={() => setInspectedSource(null)}
+                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', fontSize: '12px' }}>
+              <span style={{
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                color: '#6ee7b7',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                fontWeight: 600
+              }}>
+                Match: {Math.round(inspectedSource.similarity * 100)}%
+              </span>
+              {inspectedSource.heading && (
+                <span style={{
+                  backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                  color: '#38bdf8',
+                  padding: '2px 8px',
+                  borderRadius: '4px'
+                }}>
+                  Section: {inspectedSource.heading}
+                </span>
+              )}
+            </div>
+
+            <div style={{
+              backgroundColor: '#090d16',
+              border: '1px solid #1e293b',
+              borderRadius: '8px',
+              padding: '14px',
+              fontSize: '13px',
+              color: '#cbd5e1',
+              lineHeight: 1.6,
+              maxHeight: '260px',
+              overflowY: 'auto',
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'monospace'
+            }}>
+              {inspectedSource.snippet || 'No excerpt available for this chunk.'}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+              <button
+                onClick={() => setInspectedSource(null)}
+                style={{
+                  padding: '6px 16px',
+                  backgroundColor: '#334155',
+                  border: '1px solid #475569',
+                  color: '#f8fafc',
+                  borderRadius: '6px',
+                  fontSize: '12.5px',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

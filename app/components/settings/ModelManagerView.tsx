@@ -6,18 +6,21 @@ import {
   Folder, 
   RefreshCw, 
   CheckCircle2, 
-  XCircle, 
   AlertTriangle, 
   Monitor, 
   Sliders,
   Sparkles,
-  Info
+  Info,
+  Power,
+  Zap,
+  Gauge
 } from 'lucide-react';
 import { detectHardware, HardwareProfile, formatBytes } from '../../../core/environment/hardware';
 import { modelManager } from '../../../models/manager';
 import { ModelProfile } from '../../../models/types';
 import { chatService } from '../../../ai/chatService';
 import { localAIEngine } from '../../../ai/localEngine';
+import { globalStatus } from '../../../core/status';
 
 export function ModelManagerView() {
   const [hardware, setHardware] = useState<HardwareProfile | null>(null);
@@ -28,6 +31,7 @@ export function ModelManagerView() {
   const [isScanning, setIsScanning] = useState(false);
   const [activeModel, setActiveModel] = useState<ModelProfile | null>(null);
   const [engineStatus, setEngineStatus] = useState(localAIEngine.getStatus());
+  const [isActionLoading, setIsActionLoading] = useState(false);
 
   const [providerType, setProviderType] = useState<'auto' | 'mock' | 'llamacpp'>('auto');
   const [activeProviderName, setActiveProviderName] = useState<string>('Mock Study Assistant');
@@ -65,7 +69,9 @@ export function ModelManagerView() {
       const pName = await chatService.getProviderName();
       setActiveProviderName(pName);
 
-      setEngineStatus(localAIEngine.getStatus());
+      const status = localAIEngine.getStatus();
+      setEngineStatus(status);
+      globalStatus.setModelStatus(status.isServerRunning ? 'Loaded' : 'Not Loaded', active?.name);
     } finally {
       setIsScanning(false);
     }
@@ -79,10 +85,14 @@ export function ModelManagerView() {
       setModels(updated);
       const active = modelManager.getActiveModel();
       setActiveModel(active);
-      setEngineStatus(localAIEngine.getStatus());
+      const status = localAIEngine.getStatus();
+      setEngineStatus(status);
       const pName = await chatService.getProviderName();
       setActiveProviderName(pName);
-      setFeedbackMsg({ type: 'success', text: `Scanned directory: Found ${updated.filter(m => m.status !== 'Not Installed').length} installed GGUF model(s).` });
+      setFeedbackMsg({ 
+        type: 'success', 
+        text: `Scanned directory: Found ${updated.filter(m => m.status !== 'Not Installed').length} installed GGUF model(s).` 
+      });
     } catch (e: any) {
       setFeedbackMsg({ type: 'error', text: `Scan failed: ${e.message}` });
     } finally {
@@ -109,15 +119,64 @@ export function ModelManagerView() {
       setModels(updated);
       const active = modelManager.getActiveModel();
       setActiveModel(active);
-      setEngineStatus(localAIEngine.getStatus());
+      const status = localAIEngine.getStatus();
+      setEngineStatus(status);
       const pName = await chatService.getProviderName();
       setActiveProviderName(pName);
+      globalStatus.setModelStatus(status.isServerRunning ? 'Loaded' : 'Not Loaded', active?.name);
       setFeedbackMsg({ type: 'success', text: `Active model set to "${active?.name}".` });
     } else {
       setFeedbackMsg({ 
         type: 'error', 
         text: 'Failed to select model: File not found or failed GGUF header validation.' 
       });
+    }
+  };
+
+  const handleLoadModel = async (modelPath?: string) => {
+    const path = modelPath || activeModel?.path;
+    if (!path) {
+      setFeedbackMsg({ type: 'error', text: 'No model path available to load.' });
+      return;
+    }
+    setIsActionLoading(true);
+    setFeedbackMsg(null);
+    try {
+      const ok = await localAIEngine.loadModel(path);
+      const status = localAIEngine.getStatus();
+      setEngineStatus(status);
+      if (ok) {
+        globalStatus.setModelStatus('Loaded', activeModel?.name);
+        setFeedbackMsg({ 
+          type: 'success', 
+          text: `Model successfully loaded into llama-server (Port ${status.serverPort || 8088}).` 
+        });
+      } else {
+        setFeedbackMsg({ 
+          type: 'error', 
+          text: 'Failed to start llama-server. Verify binary in ./bin and model compatibility.' 
+        });
+      }
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: `Load error: ${err.message}` });
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleUnloadModel = async () => {
+    setIsActionLoading(true);
+    setFeedbackMsg(null);
+    try {
+      await localAIEngine.unloadModel();
+      const status = localAIEngine.getStatus();
+      setEngineStatus(status);
+      globalStatus.setModelStatus('Not Loaded');
+      setFeedbackMsg({ type: 'info', text: 'Model unloaded and llama-server process stopped.' });
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: `Unload error: ${err.message}` });
+    } finally {
+      setIsActionLoading(false);
     }
   };
 
@@ -137,38 +196,59 @@ export function ModelManagerView() {
     setFeedbackMsg({ type: 'info', text: `AI Provider mode set to: ${type.toUpperCase()}` });
   };
 
+  const speedTokSec = chatService.getLastSpeed();
   const baselineModel = models.find(m => m.id === 'qwen3-4b-q4_k_m') || models[0];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px', margin: '0 auto', paddingBottom: '30px' }}>
       
-      {/* Title */}
+      {/* Title & Actions */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
-            Hardware Detection & Local Model Manager
+            Model Management & Inference Engine
           </h2>
           <p style={{ fontSize: '13px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-            Phase 2A — Manage local GGUF models, hardware acceleration profiles, and AI inference providers.
+            Manage local GGUF models, memory loading, inference speed, and local hardware profiles · 100% Offline
           </p>
         </div>
 
-        <button 
-          onClick={() => { loadHardware(); handleScan(); }}
-          className="btn"
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '8px', 
-            backgroundColor: '#1e293b', 
-            color: '#f8fafc', 
-            border: '1px solid #334155',
-            cursor: 'pointer'
-          }}
-        >
-          <RefreshCw size={14} className={isScanning || loadingHardware ? 'animate-spin' : ''} />
-          <span>Refresh All</span>
-        </button>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button 
+            onClick={handleScan}
+            disabled={isScanning}
+            className="btn"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              backgroundColor: '#1e293b', 
+              color: '#f8fafc', 
+              border: '1px solid #334155',
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
+            <span>Scan Models</span>
+          </button>
+          
+          <button 
+            onClick={() => { loadHardware(); loadModelsAndSettings(); }}
+            className="btn"
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '8px', 
+              backgroundColor: '#0f172a', 
+              color: '#f8fafc', 
+              border: '1px solid #334155',
+              cursor: 'pointer'
+            }}
+          >
+            <RefreshCw size={14} className={isScanning || loadingHardware ? 'animate-spin' : ''} />
+            <span>Refresh All</span>
+          </button>
+        </div>
       </div>
 
       {feedbackMsg && (
@@ -184,52 +264,153 @@ export function ModelManagerView() {
         </div>
       )}
 
-      {/* 1. Hardware Detection Section */}
-      <div className="card" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <Monitor size={18} style={{ color: '#f59e0b' }} />
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
-            Detected Hardware Profile
-          </h3>
+      {/* 1. Active Model Spotlight & Control Card */}
+      <div className="card" style={{ 
+        padding: '22px', 
+        border: activeModel ? '1px solid rgba(217, 119, 6, 0.5)' : '1px solid #334155',
+        backgroundColor: 'rgba(12, 18, 30, 0.9)'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '14px' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+              <Zap size={16} style={{ color: '#f59e0b' }} />
+              <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.8px', color: '#f59e0b', fontWeight: 700 }}>
+                Active Inference Model
+              </span>
+            </div>
+            <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
+              {activeModel ? activeModel.name : 'No Active Model Selected'}
+            </h3>
+            <p style={{ fontSize: '13px', color: '#94a3b8', margin: '6px 0 0 0' }}>
+              {activeModel ? activeModel.description : 'Select a local GGUF model below to activate local AI inference.'}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {/* Loaded Status Pill */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 14px',
+              borderRadius: '20px',
+              fontSize: '12px',
+              fontWeight: 600,
+              backgroundColor: engineStatus.isServerRunning ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+              border: `1px solid ${engineStatus.isServerRunning ? '#10b981' : '#475569'}`,
+              color: engineStatus.isServerRunning ? '#6ee7b7' : '#94a3b8'
+            }}>
+              <span style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                backgroundColor: engineStatus.isServerRunning ? '#10b981' : '#64748b'
+              }}></span>
+              <span>{engineStatus.isServerRunning ? `Server Running (Port ${engineStatus.serverPort || 8088})` : 'Not Loaded in Memory'}</span>
+            </div>
+
+            {/* Load / Unload Buttons */}
+            {activeModel?.path && (
+              engineStatus.isServerRunning ? (
+                <button
+                  onClick={handleUnloadModel}
+                  disabled={isActionLoading}
+                  className="btn"
+                  style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                    border: '1px solid #ef4444',
+                    color: '#fca5a5',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
+                >
+                  <Power size={14} />
+                  <span>Unload Model</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleLoadModel()}
+                  disabled={isActionLoading || activeModel.status === 'Not Installed'}
+                  className="btn btn-primary"
+                  style={{
+                    backgroundColor: '#16a34a',
+                    color: '#fff',
+                    cursor: activeModel.status !== 'Not Installed' ? 'pointer' : 'not-allowed',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '6px 14px',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }}
+                >
+                  <Zap size={14} />
+                  <span>Load Model</span>
+                </button>
+              )
+            )}
+          </div>
         </div>
 
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
-          gap: '14px', 
-          fontSize: '13px' 
+        {/* Active Model Specs Grid */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: '12px',
+          marginTop: '18px',
+          backgroundColor: '#070b14',
+          padding: '14px',
+          borderRadius: '8px',
+          border: '1px solid #1e293b',
+          fontSize: '12.5px'
         }}>
-          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Operating System</span>
-            <strong style={{ color: '#f8fafc' }}>{hardware?.os || 'Detecting...'}</strong>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Arch: {hardware?.architecture || 'x64'}</div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Quantization: </span>
+            <strong style={{ color: '#f8fafc' }}>{activeModel?.quantization || '—'}</strong>
           </div>
-
-          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>CPU Processor</span>
-            <strong style={{ color: '#f8fafc', wordBreak: 'break-word' }}>{hardware?.cpu || 'Detecting...'}</strong>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-              {hardware ? `${hardware.logicalCores} Logical Threads${hardware.physicalCores ? ` (${hardware.physicalCores} Cores)` : ''}` : '—'}
-            </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Format: </span>
+            <strong style={{ color: '#f8fafc' }}>{activeModel?.format || 'GGUF'}</strong>
           </div>
-
-          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>RAM (System Memory)</span>
+          <div>
+            <span style={{ color: '#94a3b8' }}>File Size: </span>
             <strong style={{ color: '#f8fafc' }}>
-              {hardware ? formatBytes(hardware.totalRamBytes) : 'Detecting...'} Total
+              {activeModel?.expectedSize ? formatBytes(activeModel.expectedSize) : '—'}
             </strong>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-              {hardware?.availableRamBytes ? `${formatBytes(hardware.availableRamBytes)} Available` : 'Available: Unknown'}
-            </div>
           </div>
-
-          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>GPU & VRAM</span>
-            <strong style={{ color: '#f8fafc', wordBreak: 'break-word' }}>{hardware?.gpu || 'Unknown'}</strong>
-            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
-              VRAM: {hardware?.vramBytes ? formatBytes(hardware.vramBytes) : 'Unknown'}
-              {hardware?.gpuVendor ? ` · ${hardware.gpuVendor}` : ''}
-            </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Context Length: </span>
+            <strong style={{ color: '#f8fafc' }}>
+              {activeModel?.contextLength ? `${activeModel.contextLength} tokens` : '4096 tokens'}
+            </strong>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Approx Speed: </span>
+            <strong style={{ color: speedTokSec ? '#38bdf8' : '#cbd5e1' }}>
+              {speedTokSec ? `${speedTokSec} tok/s` : '— (Benchmark on chat)'}
+            </strong>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Availability: </span>
+            <span style={{
+              fontWeight: 600,
+              color: activeModel?.status === 'Ready' || activeModel?.status === 'Installed' ? '#10b981' : '#f59e0b'
+            }}>
+              {activeModel?.status || 'None'}
+            </span>
+          </div>
+          <div style={{ gridColumn: '1 / -1', wordBreak: 'break-all' }}>
+            <span style={{ color: '#94a3b8' }}>Path: </span>
+            <code style={{ color: activeModel?.path ? '#6ee7b7' : '#64748b', fontSize: '12px' }}>
+              {activeModel?.path || 'None'}
+            </code>
           </div>
         </div>
       </div>
@@ -239,7 +420,7 @@ export function ModelManagerView() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
           <Sliders size={18} style={{ color: '#38bdf8' }} />
           <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
-            AI Provider Selection & Engine Status
+            Inference Provider
           </h3>
         </div>
 
@@ -289,135 +470,16 @@ export function ModelManagerView() {
               }}></span>
               <span>Model Available: {engineStatus.available ? 'Yes' : 'No'}</span>
             </div>
-
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px', 
-              padding: '4px 10px', 
-              borderRadius: '20px',
-              backgroundColor: 'rgba(245, 158, 11, 0.15)',
-              border: '1px solid rgba(245, 158, 11, 0.3)',
-              color: '#fde68a'
-            }}>
-              <span>AI Engine: {engineStatus.busy ? 'Generating...' : engineStatus.available ? 'Ready' : 'Idle'}</span>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Recommended Baseline Model Card */}
-      {baselineModel && (
-        <div className="card" style={{ padding: '20px', border: '1px solid rgba(217, 119, 6, 0.4)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <Sparkles size={16} style={{ color: '#f59e0b' }} />
-                <span style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.6px', color: '#f59e0b', fontWeight: 600 }}>
-                  Recommended Local Baseline Model
-                </span>
-              </div>
-              <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
-                {baselineModel.name}
-              </h3>
-              <p style={{ fontSize: '13px', color: '#cbd5e1', margin: '6px 0 0 0', maxWidth: '600px' }}>
-                {baselineModel.description}
-              </p>
-            </div>
-
-            {/* Status Pill */}
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '6px',
-              padding: '6px 14px', 
-              borderRadius: '16px',
-              fontSize: '12px',
-              fontWeight: 600,
-              backgroundColor: baselineModel.status === 'Ready' 
-                ? 'rgba(16, 185, 129, 0.2)' 
-                : baselineModel.status === 'Installed' 
-                ? 'rgba(59, 130, 246, 0.2)' 
-                : 'rgba(245, 158, 11, 0.15)',
-              color: baselineModel.status === 'Ready' 
-                ? '#6ee7b7' 
-                : baselineModel.status === 'Installed' 
-                ? '#93c5fd' 
-                : '#fde68a',
-              border: `1px solid ${
-                baselineModel.status === 'Ready' ? '#10b981' : baselineModel.status === 'Installed' ? '#3b82f6' : '#d97706'
-              }`
-            }}>
-              {baselineModel.status === 'Ready' && <CheckCircle2 size={14} />}
-              {baselineModel.status === 'Installed' && <Info size={14} />}
-              {baselineModel.status === 'Not Installed' && <AlertTriangle size={14} />}
-              <span>Status: {baselineModel.status}</span>
-            </div>
-          </div>
-
-          {/* Model Specs */}
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', 
-            gap: '12px', 
-            marginTop: '16px',
-            backgroundColor: '#090d16',
-            padding: '12px',
-            borderRadius: '8px',
-            border: '1px solid #1e293b',
-            fontSize: '12.5px'
-          }}>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Format: </span>
-              <strong style={{ color: '#f8fafc' }}>{baselineModel.format}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Quantization: </span>
-              <strong style={{ color: '#f8fafc' }}>{baselineModel.quantization}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Expected File: </span>
-              <strong style={{ color: '#f8fafc' }}>{baselineModel.fileName}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Target RAM: </span>
-              <strong style={{ color: '#f8fafc' }}>{baselineModel.recommendedRamGb || 8} GB</strong>
-            </div>
-            <div>
-              <span style={{ color: '#94a3b8' }}>Location: </span>
-              <span style={{ color: baselineModel.path ? '#6ee7b7' : '#64748b' }}>
-                {baselineModel.path || '— (Place GGUF in models directory)'}
-              </span>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={{ marginTop: '14px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-            {baselineModel.status === 'Installed' && (
-              <button
-                onClick={() => handleSelectModel(baselineModel.id)}
-                className="btn btn-primary"
-                style={{ backgroundColor: '#2563eb', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '6px' }}
-              >
-                Set as Active Model
-              </button>
-            )}
-            {baselineModel.status === 'Not Installed' && (
-              <div style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Info size={14} style={{ color: '#38bdf8' }} />
-                <span>To use this model, place <code>{baselineModel.fileName}</code> into your configured models folder and click Scan.</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Model Directory Configuration */}
+      {/* 3. Model Directory Configuration */}
       <div className="card" style={{ padding: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
           <Folder size={18} style={{ color: '#d97706' }} />
           <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
-            Model Directory & Scanner
+            Model Directory
           </h3>
         </div>
 
@@ -445,25 +507,21 @@ export function ModelManagerView() {
           >
             Save Path
           </button>
-          <button
-            onClick={handleScan}
-            disabled={isScanning}
-            className="btn btn-primary"
-            style={{ backgroundColor: '#d97706', color: '#fff', padding: '10px 18px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-          >
-            <RefreshCw size={14} className={isScanning ? 'animate-spin' : ''} />
-            <span>Scan Models</span>
-          </button>
         </div>
       </div>
 
-      {/* 5. Registered & Detected Models Table */}
+      {/* 4. Registered & Detected Models Table */}
       <div className="card" style={{ padding: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-          <Layers size={18} style={{ color: '#a855f7' }} />
-          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
-            Registered Models in System
-          </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Layers size={18} style={{ color: '#a855f7' }} />
+            <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
+              Available Local Models
+            </h3>
+          </div>
+          <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+            {models.length} model(s) registered
+          </span>
         </div>
 
         {models.length === 0 ? (
@@ -474,6 +532,7 @@ export function ModelManagerView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {models.map((m) => {
               const isActive = activeModel?.id === m.id && (m.status === 'Ready' || m.status === 'Installed');
+              const isInstalled = m.status === 'Ready' || m.status === 'Installed';
               return (
                 <div
                   key={m.id}
@@ -515,20 +574,20 @@ export function ModelManagerView() {
                       )}
                     </div>
                     <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                      File: <code>{m.fileName}</code> {m.path ? `(${m.path})` : '— (File missing)'}
+                      File: <code>{m.fileName}</code> {m.path ? `(${m.path})` : '— (File missing in directory)'}
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ 
                       fontSize: '12px', 
-                      color: m.status === 'Ready' || m.status === 'Installed' ? '#6ee7b7' : m.status === 'Error' ? '#fca5a5' : '#fde68a',
+                      color: isInstalled ? '#6ee7b7' : m.status === 'Error' ? '#fca5a5' : '#fde68a',
                       fontWeight: 500
                     }}>
                       {m.status}
                     </div>
 
-                    {m.status === 'Installed' && (
+                    {isInstalled && !isActive && (
                       <button
                         onClick={() => handleSelectModel(m.id)}
                         style={{
@@ -541,7 +600,25 @@ export function ModelManagerView() {
                           cursor: 'pointer'
                         }}
                       >
-                        Select
+                        Set Active
+                      </button>
+                    )}
+
+                    {isInstalled && isActive && !engineStatus.isServerRunning && (
+                      <button
+                        onClick={() => handleLoadModel(m.path)}
+                        disabled={isActionLoading}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #10b981',
+                          backgroundColor: '#059669',
+                          color: '#fff',
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Load
                       </button>
                     )}
 
@@ -567,6 +644,56 @@ export function ModelManagerView() {
             })}
           </div>
         )}
+      </div>
+
+      {/* 5. Detected Hardware Profile */}
+      <div className="card" style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <Monitor size={18} style={{ color: '#f59e0b' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
+            Hardware Acceleration Profile
+          </h3>
+        </div>
+
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', 
+          gap: '14px', 
+          fontSize: '13px' 
+        }}>
+          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>Operating System</span>
+            <strong style={{ color: '#f8fafc' }}>{hardware?.os || 'Detecting...'}</strong>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Arch: {hardware?.architecture || 'x64'}</div>
+          </div>
+
+          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>CPU Processor</span>
+            <strong style={{ color: '#f8fafc', wordBreak: 'break-word' }}>{hardware?.cpu || 'Detecting...'}</strong>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              {hardware ? `${hardware.logicalCores} Logical Threads${hardware.physicalCores ? ` (${hardware.physicalCores} Cores)` : ''}` : '—'}
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>RAM (System Memory)</span>
+            <strong style={{ color: '#f8fafc' }}>
+              {hardware ? formatBytes(hardware.totalRamBytes) : 'Detecting...'} Total
+            </strong>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              {hardware?.availableRamBytes ? `${formatBytes(hardware.availableRamBytes)} Available` : 'Available: Unknown'}
+            </div>
+          </div>
+
+          <div style={{ backgroundColor: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid #1e293b' }}>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: '4px' }}>GPU & VRAM</span>
+            <strong style={{ color: '#f8fafc', wordBreak: 'break-word' }}>{hardware?.gpu || 'Unknown'}</strong>
+            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>
+              VRAM: {hardware?.vramBytes ? formatBytes(hardware.vramBytes) : 'Unknown'}
+              {hardware?.gpuVendor ? ` · ${hardware.gpuVendor}` : ''}
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>

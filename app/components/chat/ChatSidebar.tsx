@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, MessageSquare, Trash2, Edit2, Check, X, Search } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Edit2, Check, X, Search, RefreshCw } from 'lucide-react';
 import { DBConversation } from '../../../database/db';
 
 interface ChatSidebarProps {
@@ -9,6 +9,7 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
+  onRefresh?: () => void;
   width?: number;
   onWidthChange?: (newWidth: number) => void;
 }
@@ -20,6 +21,7 @@ export function ChatSidebar({
   onNewChat,
   onDeleteConversation,
   onRenameConversation,
+  onRefresh,
   width = 260,
   onWidthChange
 }: ChatSidebarProps) {
@@ -101,14 +103,36 @@ export function ChatSidebar({
         backgroundColor: 'rgba(10, 15, 29, 0.5)',
         backdropFilter: 'blur(8px)'
       }}>
-        <button 
-          onClick={onNewChat}
-          title="Create New Chat (Ctrl+N)"
-          className="wooden-action-btn"
-        >
-          <Plus size={18} />
-          <span>New Chat</span>
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button 
+            onClick={onNewChat}
+            title="Create New Chat (Ctrl+N)"
+            className="wooden-action-btn"
+            style={{ flex: 1 }}
+          >
+            <Plus size={18} />
+            <span>New Chat</span>
+          </button>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              title="Refresh conversation list"
+              style={{
+                background: 'rgba(217, 119, 6, 0.15)',
+                border: '1px solid rgba(217, 119, 6, 0.35)',
+                borderRadius: '8px',
+                color: '#fef3c7',
+                padding: '9px 10px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              <RefreshCw size={15} />
+            </button>
+          )}
+        </div>
 
         {/* Search Bar */}
         <div style={{ 

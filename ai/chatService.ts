@@ -9,6 +9,8 @@ import {
   deleteConversationFromDB,
   getMessagesByConversationId,
   insertMessageInDB,
+  deleteMessageFromDB,
+  clearMessagesByConversationId,
   getSetting,
   setSetting,
   DBConversation,
@@ -29,6 +31,7 @@ export class ChatService {
   private mockProvider: MockAIProvider;
   private llamaProvider: LlamaCppProvider;
   private lastResolvedProvider: AIProvider;
+  private lastRecordedSpeedTokPerSec: number | null = null;
 
   constructor(provider?: AIProvider) {
     this.mockProvider = new MockAIProvider();
@@ -127,6 +130,20 @@ export class ChatService {
     deleteConversationFromDB(id);
   }
 
+  public clearConversation(id: string): void {
+    if (!isDatabaseReady()) return;
+    clearMessagesByConversationId(id);
+  }
+
+  public deleteMessage(messageId: string): void {
+    if (!isDatabaseReady()) return;
+    deleteMessageFromDB(messageId);
+  }
+
+  public getLastSpeed(): number | null {
+    return this.lastRecordedSpeedTokPerSec;
+  }
+
   public renameConversation(id: string, newTitle: string): void {
     if (!isDatabaseReady() || !newTitle.trim()) return;
     updateConversationTitleInDB(id, newTitle.trim());
@@ -207,23 +224,70 @@ export class ChatService {
       this.renameConversation(conversationId, generatedTitle);
     }
 
+    const assistantMsg = await this.executeInferenceAndSave(conversationId, currentMsgs, trimmed, options);
+    return { userMessage: userMsg, assistantMessage: assistantMsg };
+  }
+
+  public async regenerateLastAnswer(
+    conversationId: string,
+    options?: SendMessageOptions
+  ): Promise<ChatMessage | null> {
+    const ready = await this.ensureDatabaseReady();
+    if (!ready || !isDatabaseReady()) {
+      throw new Error('Database not initialized');
+    }
+
+    const messages = this.getMessages(conversationId);
+    if (messages.length === 0) return null;
+
+    // If last message is assistant, delete it from DB and state
+    let promptMsgs = [...messages];
+    const lastMsg = promptMsgs[promptMsgs.length - 1];
+    if (lastMsg.role === 'assistant') {
+      deleteMessageFromDB(lastMsg.id);
+      promptMsgs.pop();
+    }
+
+    // Find the latest user message
+    const lastUserMsg = [...promptMsgs].reverse().find((m) => m.role === 'user');
+    if (!lastUserMsg) {
+      throw new Error('No user prompt found in conversation to regenerate.');
+    }
+
+    // Generate new assistant response without duplicating user message
+    return await this.executeInferenceAndSave(conversationId, promptMsgs, lastUserMsg.content, options);
+  }
+
+  public async retryFailedGeneration(
+    conversationId: string,
+    options?: SendMessageOptions
+  ): Promise<ChatMessage | null> {
+    return await this.regenerateLastAnswer(conversationId, options);
+  }
+
+  private async executeInferenceAndSave(
+    conversationId: string,
+    messageHistory: ChatMessage[],
+    userQueryText: string,
+    options?: SendMessageOptions
+  ): Promise<ChatMessage> {
     // Determine whether to use local study materials (RAG)
     const useRAG = options?.useStudyMaterials !== undefined
       ? options.useStudyMaterials
       : this.isStudyMaterialsEnabled();
 
     let usedSources: ChatMessageSource[] = [];
-    let promptMsgs = currentMsgs;
+    let promptMsgs = [...messageHistory];
     let ragSystemPrompt: string | undefined;
 
     if (useRAG) {
       try {
-        const ragContext = await ragService.buildContext(trimmed);
+        const ragContext = await ragService.buildContext(userQueryText);
         if (ragContext.usedKnowledge && ragContext.sources.length > 0) {
           usedSources = ragContext.sources;
           // Substitute the latest user message with augmented prompt containing retrieved chunks
-          promptMsgs = currentMsgs.map((m, idx) => {
-            if (idx === currentMsgs.length - 1 && m.role === 'user') {
+          promptMsgs = promptMsgs.map((m, idx) => {
+            if (idx === promptMsgs.length - 1 && m.role === 'user') {
               return { ...m, content: ragContext.augmentedUserPrompt };
             }
             return m;
@@ -256,6 +320,9 @@ export class ChatService {
         },
         onComplete: (_text: string, metrics?: GenerationMetrics) => {
           recordedMetrics = metrics;
+          if (metrics?.tokensPerSecond) {
+            this.lastRecordedSpeedTokPerSec = metrics.tokensPerSecond;
+          }
         }
       }
     };
@@ -309,8 +376,9 @@ export class ChatService {
       created_at: assistantMsg.createdAt
     });
 
-    return { userMessage: userMsg, assistantMessage: assistantMsg };
+    return assistantMsg;
   }
 }
 
 export const chatService = new ChatService();
+

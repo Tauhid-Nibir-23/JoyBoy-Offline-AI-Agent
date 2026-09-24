@@ -9,18 +9,24 @@ import {
   Wifi, 
   WifiOff, 
   Cpu, 
-  HardDrive 
+  HardDrive,
+  Layers,
+  BookOpen
 } from 'lucide-react';
 import { initDatabase, getDatabaseStatus } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
 import { ModelManagerView } from './components/settings/ModelManagerView';
+import { SettingsView } from './components/settings/SettingsView';
 import { DocumentLibraryView } from './components/documents/DocumentLibraryView';
 import { KnowledgeBaseView } from './components/knowledge/KnowledgeBaseView';
 import { chatService } from '../ai/chatService';
+import { modelManager } from '../models/manager';
+import { localAIEngine } from '../ai/localEngine';
+import { useGlobalStatus, globalStatus } from '../core/status';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'sync' | 'settings'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'models' | 'sync' | 'settings'>('chat');
   const [sysStatus, setSysStatus] = useState<SystemStatus>(detectEnvironment());
   const [dbState, setDbState] = useState<{
     status: 'initializing' | 'ready' | 'error';
@@ -31,12 +37,14 @@ export default function App() {
     error: null,
     tables: []
   });
-  const [aiProviderName, setAiProviderName] = useState<string>('Mock Assistant');
+
+  const appStatus = useGlobalStatus();
 
   useEffect(() => {
     let mounted = true;
     async function setupApp() {
       try {
+        globalStatus.setDBStatus('Connecting');
         const ok = await initDatabase();
         if (!mounted) return;
 
@@ -47,8 +55,14 @@ export default function App() {
             error: null,
             tables: status.tables
           });
-          const pName = await chatService.getProviderName();
-          if (mounted) setAiProviderName(pName);
+          globalStatus.setDBStatus('Ready');
+
+          // Initialize model manager & sync engine status
+          await modelManager.initialize();
+          const active = modelManager.getActiveModel();
+          const eng = localAIEngine.getStatus();
+          globalStatus.setModelStatus(eng.isServerRunning ? 'Loaded' : 'Not Loaded', active?.name);
+          globalStatus.setAIStatus('Ready');
         } else {
           const status = getDatabaseStatus();
           setDbState({
@@ -56,6 +70,8 @@ export default function App() {
             error: status.error || 'Failed to initialize SQLite database',
             tables: []
           });
+          globalStatus.setDBStatus('Error', status.error || 'Failed');
+          globalStatus.setAIStatus('Error');
         }
       } catch (err: any) {
         if (!mounted) return;
@@ -64,6 +80,8 @@ export default function App() {
           error: err?.message || 'Database error occurred',
           tables: []
         });
+        globalStatus.setDBStatus('Error', err?.message);
+        globalStatus.setAIStatus('Error');
       }
     }
 
@@ -133,6 +151,14 @@ export default function App() {
           </button>
 
           <button 
+            className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
+            onClick={() => setActiveTab('models')}
+          >
+            <Cpu size={18} />
+            <span>Model Manager</span>
+          </button>
+
+          <button 
             className={`nav-item ${activeTab === 'sync' ? 'active' : ''}`}
             onClick={() => setActiveTab('sync')}
           >
@@ -165,36 +191,50 @@ export default function App() {
       <main className="main-content">
         {/* Top Status Header */}
         <header className="top-bar">
-          <div style={{ fontSize: '16px', fontWeight: 600 }}>
-            {activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('-', ' ')} View
+          <div style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
+            {activeTab === 'models' ? 'Model Manager' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('-', ' ')}
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             {/* AI Status Badge */}
             <div className="status-badge badge-neutral">
-              <Cpu size={14} />
-              <span className="status-dot dot-amber"></span>
-              <span>AI: {aiProviderName}</span>
+              <Cpu size={13} />
+              <span className={`status-dot ${appStatus.ai === 'Ready' ? 'dot-green' : appStatus.ai === 'Generating' ? 'dot-amber' : appStatus.ai === 'Error' ? 'dot-red' : 'dot-amber'}`}></span>
+              <span>AI: {appStatus.ai}</span>
+            </div>
+
+            {/* Model Status Badge */}
+            <div className={`status-badge ${appStatus.model === 'Loaded' ? 'badge-online' : 'badge-neutral'}`}>
+              <Layers size={13} />
+              <span className={`status-dot ${appStatus.model === 'Loaded' ? 'dot-green' : 'dot-amber'}`}></span>
+              <span>Model: {appStatus.model}</span>
+            </div>
+
+            {/* DB Status Badge */}
+            <div className={`status-badge ${appStatus.db === 'Ready' ? 'badge-online' : 'badge-offline'}`}>
+              <HardDrive size={13} />
+              <span className={`status-dot ${appStatus.db === 'Ready' ? 'dot-green' : (appStatus.db === 'Connecting' ? 'dot-amber' : 'dot-red')}`}></span>
+              <span>DB: {appStatus.db}</span>
+            </div>
+
+            {/* RAG Status Badge */}
+            <div className={`status-badge ${appStatus.rag === 'Ready' ? 'badge-online' : 'badge-neutral'}`}>
+              <BookOpen size={13} />
+              <span className={`status-dot ${appStatus.rag === 'Ready' ? 'dot-green' : appStatus.rag === 'Indexing' ? 'dot-amber' : 'dot-red'}`}></span>
+              <span>RAG: {appStatus.rag}</span>
             </div>
 
             {/* Internet Status Badge */}
             <div className={`status-badge ${sysStatus.isOnline ? 'badge-online' : 'badge-offline'}`}>
-              {sysStatus.isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+              {sysStatus.isOnline ? <Wifi size={13} /> : <WifiOff size={13} />}
               <span className={`status-dot ${sysStatus.isOnline ? 'dot-green' : 'dot-red'}`}></span>
-              <span>Internet: {sysStatus.isOnline ? 'Online Sync Available' : 'Offline Mode'}</span>
-            </div>
-
-            {/* DB Status Badge */}
-            <div className={`status-badge ${dbState.status === 'ready' ? 'badge-online' : 'badge-offline'}`}>
-              <HardDrive size={14} />
-              <span className={`status-dot ${dbState.status === 'ready' ? 'dot-green' : (dbState.status === 'initializing' ? 'dot-amber' : 'dot-red')}`}></span>
-              <span>DB: {dbState.status === 'ready' ? 'Ready' : (dbState.status === 'initializing' ? 'Connecting' : 'Error')}</span>
+              <span>{sysStatus.isOnline ? 'Online' : 'Offline'}</span>
             </div>
           </div>
         </header>
 
         {/* Dynamic View Sections */}
-        <section className="view-container" style={{ padding: activeTab === 'chat' && dbState.status === 'ready' ? 0 : '24px' }}>
+        <section className="view-container" style={{ padding: activeTab === 'chat' && dbState.status === 'ready' ? 0 : '24px', overflowY: activeTab === 'chat' ? 'hidden' : 'auto', height: 'calc(100vh - 52px)' }}>
           {activeTab === 'chat' && (
             dbState.status === 'ready' ? (
               <ChatView />
@@ -246,6 +286,8 @@ export default function App() {
 
           {activeTab === 'documents' && <DocumentLibraryView />}
 
+          {activeTab === 'models' && <ModelManagerView />}
+
           {activeTab === 'sync' && (
             <div className="card">
               <h3>Sync Center (Placeholder)</h3>
@@ -255,7 +297,7 @@ export default function App() {
             </div>
           )}
 
-          {activeTab === 'settings' && <ModelManagerView />}
+          {activeTab === 'settings' && <SettingsView onNavigateToModels={() => setActiveTab('models')} />}
         </section>
       </main>
     </div>

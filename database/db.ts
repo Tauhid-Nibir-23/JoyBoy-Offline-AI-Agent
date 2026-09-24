@@ -175,9 +175,19 @@ export async function initDatabase(): Promise<boolean> {
         try {
           const savedDb = localStorage.getItem('offline_study_ai_db');
           if (savedDb) {
-            const u8array = new Uint8Array(JSON.parse(savedDb));
-            dbInstance = new SQL.Database(u8array);
-            loadedExisting = true;
+            try {
+              const u8array = new Uint8Array(JSON.parse(savedDb));
+              dbInstance = new SQL.Database(u8array);
+              loadedExisting = true;
+            } catch (corruptErr) {
+              console.warn('Existing SQLite database in storage was corrupted. Backing up and resetting clean database:', corruptErr);
+              try {
+                localStorage.setItem(`offline_study_ai_db_corrupt_${Date.now()}`, savedDb);
+              } catch (_) {}
+              localStorage.removeItem('offline_study_ai_db');
+              dbInstance = new SQL.Database();
+              loadedExisting = true;
+            }
           }
         } catch (storageReadErr) {
           console.warn('Could not read existing database from localStorage:', storageReadErr);
@@ -610,5 +620,106 @@ export function getAllChunksWithEmbeddings(): Array<DBDocumentChunk & { filename
 export function deleteChunksByDocumentId(documentId: string): void {
   executeQuery('DELETE FROM document_chunks WHERE document_id = ?', [documentId]);
 }
+
+export interface DatabaseStats {
+  conversationsCount: number;
+  messagesCount: number;
+  documentsCount: number;
+  chunksCount: number;
+  databaseSizeBytes: number;
+}
+
+export function getDatabaseStats(): DatabaseStats {
+  if (!dbInstance) {
+    return {
+      conversationsCount: 0,
+      messagesCount: 0,
+      documentsCount: 0,
+      chunksCount: 0,
+      databaseSizeBytes: 0
+    };
+  }
+
+  let conversationsCount = 0;
+  let messagesCount = 0;
+  let documentsCount = 0;
+  let chunksCount = 0;
+  let databaseSizeBytes = 0;
+
+  try {
+    const cRes = executeQuery('SELECT COUNT(*) as count FROM conversations');
+    conversationsCount = Number(cRes[0]?.count || 0);
+
+    const mRes = executeQuery('SELECT COUNT(*) as count FROM messages');
+    messagesCount = Number(mRes[0]?.count || 0);
+
+    const dRes = executeQuery('SELECT COUNT(*) as count FROM documents');
+    documentsCount = Number(dRes[0]?.count || 0);
+
+    const chRes = executeQuery('SELECT COUNT(*) as count FROM document_chunks');
+    chunksCount = Number(chRes[0]?.count || 0);
+
+    if (typeof localStorage !== 'undefined') {
+      const raw = localStorage.getItem('offline_study_ai_db');
+      if (raw) databaseSizeBytes = raw.length;
+    }
+    if (databaseSizeBytes === 0 && dbInstance) {
+      try {
+        const exported = dbInstance.export();
+        databaseSizeBytes = exported.length;
+      } catch (_) {}
+    }
+  } catch (err) {
+    console.warn('Failed to calculate database stats:', err);
+  }
+
+  return {
+    conversationsCount,
+    messagesCount,
+    documentsCount,
+    chunksCount,
+    databaseSizeBytes
+  };
+}
+
+export function deleteMessageFromDB(id: string): void {
+  executeQuery('DELETE FROM messages WHERE id = ?', [id]);
+}
+
+export function clearMessagesByConversationId(conversationId: string): void {
+  executeQuery('DELETE FROM messages WHERE conversation_id = ?', [conversationId]);
+}
+
+export function clearAllConversations(): void {
+  executeQuery('DELETE FROM messages');
+  executeQuery('DELETE FROM conversations');
+}
+
+export function clearAllDocuments(): void {
+  executeQuery('DELETE FROM document_chunks');
+  executeQuery('DELETE FROM documents');
+}
+
+export function clearEntireDatabase(): void {
+  if (!dbInstance) return;
+  executeQuery('DELETE FROM messages');
+  executeQuery('DELETE FROM conversations');
+  executeQuery('DELETE FROM document_chunks');
+  executeQuery('DELETE FROM documents');
+  executeQuery('DELETE FROM settings');
+  dbInstance.run(INITIAL_SCHEMA);
+  saveDatabase();
+}
+
+export function getChunkCountByDocumentId(documentId: string): number {
+  if (!dbInstance) return 0;
+  try {
+    const res = executeQuery('SELECT COUNT(*) as count FROM document_chunks WHERE document_id = ?', [documentId]);
+    return Number(res[0]?.count || 0);
+  } catch {
+    return 0;
+  }
+}
+
 
 

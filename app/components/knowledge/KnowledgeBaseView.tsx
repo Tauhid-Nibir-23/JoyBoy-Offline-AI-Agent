@@ -1,4 +1,4 @@
-// Offline Study AI - Knowledge Base & Local RAG View (Phase 3B Part 10)
+// Offline Study AI - Knowledge Base & Local RAG View (Phase 4 Section 5)
 import React, { useState, useEffect } from 'react';
 import { 
   Database, 
@@ -11,12 +11,39 @@ import {
   FileText, 
   RefreshCw,
   Sparkles,
-  ExternalLink
+  Trash2,
+  X,
+  FileCode,
+  FileType,
+  Info
 } from 'lucide-react';
 import { ragService } from '../../../rag';
 import { RAGIndexingStats, RAGSearchResult } from '../../../rag/types';
 import { chatService } from '../../../ai/chatService';
-import { getAllDocuments, DBDocument } from '../../../database/db';
+import { documentService } from '../../../documents/documentService';
+import { 
+  getAllDocuments, 
+  DBDocument, 
+  getChunkCountByDocumentId, 
+  getChunksByDocumentId, 
+  DBDocumentChunk 
+} from '../../../database/db';
+import { globalStatus } from '../../../core/status';
+
+function formatDate(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return iso;
+  }
+}
 
 export function KnowledgeBaseView() {
   const [stats, setStats] = useState<RAGIndexingStats>({
@@ -28,12 +55,24 @@ export function KnowledgeBaseView() {
     embeddedChunks: 0
   });
   const [documents, setDocuments] = useState<DBDocument[]>([]);
+  const [searchDocQuery, setSearchDocQuery] = useState<string>('');
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [selectedDocChunks, setSelectedDocChunks] = useState<DBDocumentChunk[]>([]);
+
   const [useStudyMaterials, setUseStudyMaterials] = useState<boolean>(true);
   const [testQuery, setTestQuery] = useState<string>('What is process scheduling?');
   const [searchResults, setSearchResults] = useState<RAGSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [isIndexingAll, setIsIndexingAll] = useState<boolean>(false);
   const [indexingDocId, setIndexingDocId] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+
+  const showToast = (type: 'success' | 'error' | 'info', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => {
+      setToastMsg((curr) => (curr?.text === text ? null : curr));
+    }, 4000);
+  };
 
   const refreshData = () => {
     try {
@@ -42,6 +81,10 @@ export function KnowledgeBaseView() {
       const docs = getAllDocuments();
       setDocuments(docs);
       setUseStudyMaterials(chatService.isStudyMaterialsEnabled());
+
+      if (selectedDocId) {
+        setSelectedDocChunks(getChunksByDocumentId(selectedDocId));
+      }
     } catch (err) {
       console.error('Failed to load knowledge base data:', err);
     }
@@ -49,7 +92,7 @@ export function KnowledgeBaseView() {
 
   useEffect(() => {
     refreshData();
-  }, []);
+  }, [selectedDocId]);
 
   const handleToggleStudyMaterials = () => {
     const next = !useStudyMaterials;
@@ -73,11 +116,16 @@ export function KnowledgeBaseView() {
 
   const handleIndexDocument = async (docId: string) => {
     setIndexingDocId(docId);
+    globalStatus.setRAGStatus('Indexing');
     try {
       await ragService.indexDocument(docId);
       refreshData();
-    } catch (err) {
+      globalStatus.setRAGStatus('Ready');
+      showToast('success', 'Document indexed successfully.');
+    } catch (err: any) {
       console.error('Index document failed:', err);
+      globalStatus.setRAGStatus('Error', err.message);
+      showToast('error', 'Indexing failed: ' + err.message);
     } finally {
       setIndexingDocId(null);
     }
@@ -85,18 +133,62 @@ export function KnowledgeBaseView() {
 
   const handleIndexAll = async () => {
     setIsIndexingAll(true);
+    globalStatus.setRAGStatus('Indexing');
     try {
       await ragService.indexAllPendingDocuments();
       refreshData();
-    } catch (err) {
+      globalStatus.setRAGStatus('Ready');
+      showToast('success', 'Indexed all pending documents.');
+    } catch (err: any) {
       console.error('Index all failed:', err);
+      globalStatus.setRAGStatus('Error', err.message);
+      showToast('error', 'Index all failed: ' + err.message);
     } finally {
       setIsIndexingAll(false);
     }
   };
 
+  const handleDeleteDocument = async (doc: DBDocument) => {
+    if (window.confirm(`Are you sure you want to delete "${doc.filename}" and all its indexed chunks?`)) {
+      try {
+        const ok = await documentService.deleteDocument(doc.id);
+        if (ok) {
+          if (selectedDocId === doc.id) {
+            setSelectedDocId(null);
+            setSelectedDocChunks([]);
+          }
+          refreshData();
+          showToast('info', `Deleted "${doc.filename}".`);
+        } else {
+          showToast('error', `Could not delete "${doc.filename}".`);
+        }
+      } catch (err: any) {
+        showToast('error', 'Delete error: ' + err.message);
+      }
+    }
+  };
+
+  const handleSelectDoc = (docId: string) => {
+    if (selectedDocId === docId) {
+      setSelectedDocId(null);
+      setSelectedDocChunks([]);
+    } else {
+      setSelectedDocId(docId);
+      setSelectedDocChunks(getChunksByDocumentId(docId));
+    }
+  };
+
+  const filteredDocs = documents.filter((d) => {
+    const q = searchDocQuery.toLowerCase().trim();
+    if (!q) return true;
+    return d.filename.toLowerCase().includes(q) || d.file_type.toLowerCase().includes(q);
+  });
+
+  const selectedDoc = documents.find((d) => d.id === selectedDocId);
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', overflowY: 'auto', paddingRight: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', overflowY: 'auto', paddingRight: '4px', paddingBottom: '30px' }}>
+      
       {/* Header Banner */}
       <div style={{
         display: 'flex',
@@ -106,7 +198,9 @@ export function KnowledgeBaseView() {
         backgroundColor: 'rgba(15, 23, 42, 0.75)',
         border: '1px solid rgba(217, 119, 6, 0.35)',
         borderRadius: '12px',
-        backdropFilter: 'blur(10px)'
+        backdropFilter: 'blur(10px)',
+        flexWrap: 'wrap',
+        gap: '12px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           <div style={{
@@ -184,11 +278,24 @@ export function KnowledgeBaseView() {
               opacity: stats.totalDocuments === 0 ? 0.6 : 1
             }}
           >
-            <RefreshCw size={14} className={isIndexingAll ? 'spin' : ''} />
+            <RefreshCw size={14} className={isIndexingAll ? 'animate-spin' : ''} />
             <span>{isIndexingAll ? 'Indexing...' : 'Index Pending'}</span>
           </button>
         </div>
       </div>
+
+      {toastMsg && (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: '8px',
+          fontSize: '13px',
+          backgroundColor: toastMsg.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : toastMsg.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+          border: `1px solid ${toastMsg.type === 'success' ? '#10b981' : toastMsg.type === 'error' ? '#ef4444' : '#3b82f6'}`,
+          color: toastMsg.type === 'success' ? '#6ee7b7' : toastMsg.type === 'error' ? '#fca5a5' : '#93c5fd'
+        }}>
+          {toastMsg.text}
+        </div>
+      )}
 
       {/* 4 Stat Cards */}
       <div style={{
@@ -379,7 +486,7 @@ export function KnowledgeBaseView() {
               gap: '6px'
             }}
           >
-            {isSearching ? <RefreshCw size={14} className="spin" /> : <Search size={14} />}
+            {isSearching ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
             <span>Search Chunks</span>
           </button>
         </div>
@@ -444,50 +551,102 @@ export function KnowledgeBaseView() {
         )}
       </div>
 
-      {/* Documents Status Table */}
+      {/* Documents Status Table with Search Filter */}
       <div style={{
         backgroundColor: 'rgba(15, 23, 42, 0.75)',
         border: '1px solid rgba(148, 163, 184, 0.2)',
         borderRadius: '12px',
         padding: '20px'
       }}>
-        <h3 style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc', margin: '0 0 14px 0' }}>
-          Document Indexing Status
-        </h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+          <div>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
+              Knowledge Base Documents
+            </h3>
+            <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+              Select a row to inspect its generated chunks · Re-index or remove files
+            </span>
+          </div>
 
-        {documents.length === 0 ? (
+          {/* Search documents filter */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: '#090d16',
+            border: '1px solid #334155',
+            borderRadius: '6px',
+            padding: '5px 10px',
+            width: '240px'
+          }}>
+            <Search size={14} color="#94a3b8" />
+            <input
+              type="text"
+              placeholder="Filter documents..."
+              value={searchDocQuery}
+              onChange={(e) => setSearchDocQuery(e.target.value)}
+              style={{
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                color: '#f8fafc',
+                fontSize: '12px',
+                outline: 'none'
+              }}
+            />
+          </div>
+        </div>
+
+        {filteredDocs.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '32px 0', color: '#94a3b8', fontSize: '13px' }}>
-            No documents imported yet. Go to the Documents tab to import PDF, DOCX, TXT, or code files.
+            {documents.length === 0 
+              ? 'No documents imported yet. Go to the Documents tab to import PDF, DOCX, TXT, or code files.'
+              : 'No documents match your search query.'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
-                <tr style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.2)', color: '#94a3b8' }}>
+                <tr style={{ borderBottom: '1px solid rgba(148, 163, 184, 0.2)', color: '#94a3b8', fontSize: '12px' }}>
                   <th style={{ padding: '8px 12px' }}>Document</th>
                   <th style={{ padding: '8px 12px' }}>Type</th>
                   <th style={{ padding: '8px 12px' }}>Characters</th>
+                  <th style={{ padding: '8px 12px' }}>Chunks</th>
+                  <th style={{ padding: '8px 12px' }}>Indexed Date</th>
                   <th style={{ padding: '8px 12px' }}>Extraction</th>
                   <th style={{ padding: '8px 12px' }}>Index Status</th>
                   <th style={{ padding: '8px 12px', textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {documents.map((doc) => {
+                {filteredDocs.map((doc) => {
                   const isThisIndexing = indexingDocId === doc.id;
                   const isIndexed = doc.indexing_status === 'Indexed';
                   const isFailed = doc.indexing_status === 'Index Failed' || doc.extraction_status === 'Failed';
+                  const isSelected = selectedDocId === doc.id;
+                  const chunkCount = getChunkCountByDocumentId(doc.id);
 
                   return (
                     <tr
                       key={doc.id}
+                      onClick={() => handleSelectDoc(doc.id)}
                       style={{
                         borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
-                        color: '#f8fafc'
+                        color: '#f8fafc',
+                        backgroundColor: isSelected ? 'rgba(217, 119, 6, 0.15)' : 'transparent',
+                        cursor: 'pointer',
+                        transition: 'background-color 0.15s ease'
                       }}
                     >
                       <td style={{ padding: '10px 12px', fontWeight: 500 }}>
-                        {doc.filename}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: isSelected ? '#fbbf24' : '#f8fafc' }}>{doc.filename}</span>
+                          {doc.error_message && (
+                            <span title={doc.error_message} style={{ color: '#ef4444', display: 'inline-flex' }}>
+                              <AlertCircle size={14} />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{
@@ -501,6 +660,12 @@ export function KnowledgeBaseView() {
                       </td>
                       <td style={{ padding: '10px 12px', color: '#94a3b8' }}>
                         {doc.character_count.toLocaleString()}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#fbbf24', fontWeight: 600 }}>
+                        {chunkCount}
+                      </td>
+                      <td style={{ padding: '10px 12px', color: '#94a3b8', fontSize: '12px' }}>
+                        {formatDate(doc.indexed_at)}
                       </td>
                       <td style={{ padding: '10px 12px' }}>
                         <span style={{
@@ -521,29 +686,46 @@ export function KnowledgeBaseView() {
                           color: isIndexed ? '#10b981' : (isFailed ? '#ef4444' : '#f59e0b')
                         }}>
                           {isIndexed && <CheckCircle size={12} />}
-                          {isThisIndexing && <RefreshCw size={12} className="spin" />}
+                          {isThisIndexing && <RefreshCw size={12} className="animate-spin" />}
                           {isFailed && <AlertCircle size={12} />}
                           {isThisIndexing ? 'Indexing...' : (doc.indexing_status || 'Ready')}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 12px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleIndexDocument(doc.id)}
-                          disabled={isThisIndexing || doc.extraction_status !== 'Ready'}
-                          style={{
-                            padding: '4px 10px',
-                            backgroundColor: '#1e293b',
-                            border: '1px solid #475569',
-                            color: '#cbd5e1',
-                            borderRadius: '6px',
-                            fontSize: '11px',
-                            fontWeight: 600,
-                            cursor: doc.extraction_status === 'Ready' ? 'pointer' : 'not-allowed',
-                            opacity: doc.extraction_status === 'Ready' ? 1 : 0.5
-                          }}
-                        >
-                          {isIndexed ? 'Re-index' : 'Index'}
-                        </button>
+                      <td style={{ padding: '10px 12px', textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', gap: '6px' }}>
+                          <button
+                            onClick={() => handleIndexDocument(doc.id)}
+                            disabled={isThisIndexing || doc.extraction_status !== 'Ready'}
+                            style={{
+                              padding: '4px 10px',
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #475569',
+                              color: '#cbd5e1',
+                              borderRadius: '6px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              cursor: doc.extraction_status === 'Ready' ? 'pointer' : 'not-allowed',
+                              opacity: doc.extraction_status === 'Ready' ? 1 : 0.5
+                            }}
+                          >
+                            {isIndexed ? 'Re-index' : 'Index'}
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteDocument(doc)}
+                            title="Delete document"
+                            style={{
+                              padding: '4px 8px',
+                              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              color: '#fca5a5',
+                              borderRadius: '6px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -553,6 +735,78 @@ export function KnowledgeBaseView() {
           </div>
         )}
       </div>
+
+      {/* Selected Document Chunks Inspector */}
+      {selectedDoc && (
+        <div style={{
+          backgroundColor: 'rgba(15, 23, 42, 0.85)',
+          border: '1px solid rgba(217, 119, 6, 0.4)',
+          borderRadius: '12px',
+          padding: '20px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Layers size={18} style={{ color: '#fbbf24' }} />
+              <div>
+                <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
+                  Chunks for "{selectedDoc.filename}"
+                </h3>
+                <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                  {selectedDocChunks.length} chunk(s) generated · {selectedDoc.character_count.toLocaleString()} total characters
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedDocId(null)}
+              style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          {selectedDocChunks.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: '12px', padding: '16px', textAlign: 'center' }}>
+              No chunks generated for this document yet. Click "Index" or "Re-index" to create semantic chunks.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '350px', overflowY: 'auto' }}>
+              {selectedDocChunks.map((chunk) => (
+                <div
+                  key={chunk.id}
+                  style={{
+                    backgroundColor: '#090d16',
+                    border: '1px solid #1e293b',
+                    borderRadius: '8px',
+                    padding: '12px 14px'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', fontSize: '11.5px' }}>
+                    <span style={{ fontWeight: 600, color: '#fbbf24' }}>Chunk #{chunk.chunk_index + 1}</span>
+                    <span style={{ color: '#94a3b8' }}>
+                      {chunk.character_count} chars · ~{chunk.token_estimate} tokens {chunk.heading ? `· ${chunk.heading}` : ''}
+                    </span>
+                  </div>
+                  <pre style={{
+                    fontSize: '12px',
+                    color: '#cbd5e1',
+                    lineHeight: 1.5,
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    fontFamily: 'monospace',
+                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                    padding: '8px 10px',
+                    borderRadius: '6px'
+                  }}>
+                    {chunk.text}
+                  </pre>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }
