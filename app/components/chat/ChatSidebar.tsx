@@ -153,15 +153,16 @@ export function ChatSidebar({
                   padding: '9px 10px',
                   borderRadius: '6px',
                   marginBottom: '4px',
-                  backgroundColor: isActive ? '#1e293b' : 'transparent',
-                  color: isActive ? '#f8fafc' : '#94a3b8',
+                  backgroundColor: isActive ? 'rgba(180, 83, 9, 0.25)' : 'transparent',
+                  border: isActive ? '1px solid rgba(245, 158, 11, 0.4)' : '1px solid transparent',
+                  color: isActive ? '#fef3c7' : '#94a3b8',
                   cursor: 'pointer',
                   fontSize: '13px',
                   transition: 'all 0.15s ease'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: 0 }}>
-                  <MessageSquare size={16} color={isActive ? '#38bdf8' : '#64748b'} style={{ flexShrink: 0 }} />
+                  <MessageSquare size={16} color={isActive ? '#f59e0b' : '#64748b'} style={{ flexShrink: 0 }} />
                   {isEditing ? (
                     <input
                       type="text"
