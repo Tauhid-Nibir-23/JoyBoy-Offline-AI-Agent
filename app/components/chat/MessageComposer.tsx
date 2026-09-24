@@ -36,28 +36,46 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
   };
 
   return (
-    <div style={{ padding: '16px 24px 20px 24px', backgroundColor: '#090d16', borderTop: '1px solid #1e293b' }}>
-      <form onSubmit={handleSubmit} style={{ position: 'relative', display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+    <div style={{ 
+      padding: '12px 32px 16px 32px', 
+      background: 'linear-gradient(180deg, transparent 0%, rgba(7, 11, 20, 0.8) 100%)',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      width: '100%'
+    }}>
+      <form 
+        onSubmit={handleSubmit} 
+        className="wooden-composer-frame"
+        style={{ 
+          position: 'relative', 
+          display: 'flex', 
+          alignItems: 'center', 
+          width: '100%',
+          maxWidth: '850px',
+          padding: '4px 6px'
+        }}
+      >
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type your study question or prompt... (Enter to send, Shift+Enter for new line)"
+          placeholder="What is an operating system? (Type your study prompt...)"
           disabled={disabled}
           rows={1}
           style={{
             flex: 1,
-            backgroundColor: '#0f172a',
-            border: '1px solid #1e293b',
-            borderRadius: '10px',
-            padding: '12px 48px 12px 14px',
-            color: '#f8fafc',
+            backgroundColor: 'transparent',
+            border: 'none',
+            padding: '10px 48px 10px 16px',
+            color: '#fffbeb',
             fontSize: '14px',
             outline: 'none',
             resize: 'none',
-            maxHeight: '140px',
-            lineHeight: 1.5
+            maxHeight: '120px',
+            lineHeight: 1.5,
+            fontFamily: 'inherit'
           }}
         />
 
@@ -67,26 +85,32 @@ export function MessageComposer({ onSend, disabled }: MessageComposerProps) {
           style={{
             position: 'absolute',
             right: '8px',
-            bottom: '8px',
             width: '34px',
             height: '34px',
-            borderRadius: '8px',
-            backgroundColor: text.trim() && !disabled ? '#2563eb' : '#1e293b',
-            color: text.trim() && !disabled ? '#ffffff' : '#64748b',
-            border: 'none',
+            borderRadius: '50%',
+            backgroundColor: text.trim() && !disabled ? '#d97706' : 'rgba(43, 24, 16, 0.6)',
+            color: text.trim() && !disabled ? '#ffffff' : '#78350f',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             cursor: text.trim() && !disabled ? 'pointer' : 'not-allowed',
-            transition: 'background-color 0.2s'
+            transition: 'all 0.2s ease',
+            boxShadow: text.trim() && !disabled ? '0 0 10px rgba(245, 158, 11, 0.6)' : 'none'
           }}
         >
-          <Send size={16} />
+          <Send size={15} />
         </button>
       </form>
 
-      <div style={{ textAlign: 'center', fontSize: '11px', color: '#64748b', marginTop: '8px' }}>
-        Offline Study AI — Private & Local. Responses stored in SQLite on your PC.
+      <div style={{ 
+        textAlign: 'center', 
+        fontSize: '11px', 
+        color: '#d1b49d', 
+        marginTop: '8px',
+        textShadow: '0 1px 3px rgba(0, 0, 0, 0.9)'
+      }}>
+        JoyBoy — Private & Local · Responses stored in SQLite on your PC
       </div>
     </div>
   );

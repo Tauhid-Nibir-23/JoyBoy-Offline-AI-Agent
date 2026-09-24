@@ -25,58 +25,60 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
         alignItems: 'center', 
         justifyContent: 'center', 
         padding: '32px',
-        color: '#94a3b8'
+        userSelect: 'none'
       }}>
+        {/* Golden Compass & JoyBoy Title */}
         <div style={{ 
-          width: '56px', 
-          height: '56px', 
-          borderRadius: '16px', 
-          backgroundColor: '#1e293b', 
           display: 'flex', 
           alignItems: 'center', 
-          justifyContent: 'center',
-          marginBottom: '16px',
-          color: '#38bdf8'
-        }}>
-          <Sparkles size={28} />
-        </div>
-        <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#f8fafc', marginBottom: '8px' }}>
-          Offline Study Assistant
-        </h2>
-        <p style={{ fontSize: '14px', maxWidth: '460px', textAlign: 'center', lineHeight: 1.5, color: '#64748b' }}>
-          Ask questions about your subjects, request code explanations, or practice active recall. All chat history and responses stay 100% local.
-        </p>
-
-        <div style={{ 
-          marginTop: '24px', 
-          display: 'grid', 
-          gridTemplateColumns: '1fr 1fr', 
           gap: '12px', 
-          maxWidth: '560px', 
+          marginBottom: '24px',
+          background: 'rgba(18, 10, 6, 0.65)',
+          padding: '10px 24px',
+          borderRadius: '30px',
+          border: '1px solid rgba(245, 158, 11, 0.4)',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(245, 158, 11, 0.25)',
+          backdropFilter: 'blur(6px)'
+        }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.8))' }}>
+            <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="2 2" fill="rgba(43, 24, 16, 0.7)" />
+            <circle cx="12" cy="12" r="7.5" stroke="#d97706" strokeWidth="1" />
+            <polygon points="12,2 14,10 12,12 10,10" fill="#fbbf24" />
+            <polygon points="12,22 14,14 12,12 10,14" fill="#92400e" />
+            <polygon points="2,12 10,10 12,12 10,14" fill="#92400e" />
+            <polygon points="22,12 14,10 12,12 14,14" fill="#fbbf24" />
+            <circle cx="12" cy="12" r="2.5" fill="#fef3c7" stroke="#78350f" strokeWidth="1" />
+          </svg>
+          <span style={{ 
+            fontSize: '24px', 
+            fontWeight: 800, 
+            color: '#fef3c7', 
+            textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 0 14px rgba(245, 158, 11, 0.6)',
+            letterSpacing: '0.8px',
+            fontFamily: 'serif, Georgia, sans-serif'
+          }}>
+            JoyBoy AI
+          </span>
+        </div>
+
+        {/* 4 Wooden Plaque Suggestion Planks */}
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(2, minmax(240px, 310px))', 
+          gap: '16px', 
+          maxWidth: '650px', 
           width: '100%' 
         }}>
           {[
             'What is an operating system?',
             'Explain binary search algorithm',
-            'How does CPU scheduling work?',
+            'How does CPU scheduling work',
             'Give me a C process example'
           ].map((prompt, idx) => (
             <button
               key={idx}
+              className="wooden-plaque-btn"
               onClick={() => onSuggestionClick && onSuggestionClick(prompt)}
-              style={{
-                padding: '12px 14px',
-                backgroundColor: '#0f172a',
-                border: '1px solid #1e293b',
-                borderRadius: '8px',
-                color: '#cbd5e1',
-                fontSize: '13px',
-                textAlign: 'left',
-                cursor: 'pointer',
-                transition: 'border-color 0.2s'
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#3b82f6')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#1e293b')}
             >
               "{prompt}"
             </button>
@@ -119,13 +121,14 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
 
             {/* Bubble */}
             <div style={{
-              backgroundColor: isUser ? '#1e3a8a' : '#0f172a',
-              border: isUser ? '1px solid #2563eb' : '1px solid #1e293b',
+              backgroundColor: isUser ? 'rgba(30, 58, 138, 0.88)' : 'rgba(18, 24, 38, 0.92)',
+              border: isUser ? '1px solid #3b82f6' : '1px solid rgba(217, 119, 6, 0.35)',
               padding: '12px 16px',
               borderRadius: '12px',
               color: '#f8fafc',
               fontSize: '14px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+              backdropFilter: 'blur(8px)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
             }}>
               {isUser ? (
                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{msg.content}</div>

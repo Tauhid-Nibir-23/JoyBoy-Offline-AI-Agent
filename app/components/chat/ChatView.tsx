@@ -153,7 +153,18 @@ export function ChatView() {
       />
 
       {/* Main Chat Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#090d16', minWidth: 0 }}>
+      <div style={{ 
+        flex: 1, 
+        display: 'flex', 
+        flexDirection: 'column', 
+        height: '100%', 
+        position: 'relative',
+        backgroundImage: "linear-gradient(rgba(7, 11, 20, 0.25), rgba(7, 11, 20, 0.45)), url('/assets/chat_bg.png')",
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundColor: '#090d16',
+        minWidth: 0 
+      }}>
         {/* Error Notification Banner */}
         {errorMsg && (
           <div style={{
@@ -182,17 +193,18 @@ export function ChatView() {
         {/* Conversation Header */}
         <div style={{
           padding: '12px 24px',
-          borderBottom: '1px solid #1e293b',
-          backgroundColor: '#0f172a',
+          borderBottom: '1px solid rgba(217, 119, 6, 0.2)',
+          backgroundColor: 'rgba(10, 15, 29, 0.7)',
+          backdropFilter: 'blur(10px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
           <div>
-            <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc', margin: 0 }}>
+            <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
               {activeConv ? activeConv.title : 'New Chat'}
             </h2>
-            <span style={{ fontSize: '11px', color: '#64748b' }}>
+            <span style={{ fontSize: '11px', color: '#d97706' }}>
               Active AI Provider: {chatService.getProviderName()}
             </span>
           </div>

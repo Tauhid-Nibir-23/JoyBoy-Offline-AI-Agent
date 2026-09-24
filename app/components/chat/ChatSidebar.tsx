@@ -82,8 +82,8 @@ export function ChatSidebar({
     <div style={{ 
       width: `${width}px`, 
       minWidth: `${width}px`,
-      backgroundColor: '#0c1322', 
-      borderRight: '1px solid #1e293b', 
+      backgroundColor: '#0c121e', 
+      borderRight: '1px solid rgba(217, 119, 6, 0.2)', 
       display: 'flex', 
       flexDirection: 'column',
       height: '100%',
@@ -91,26 +91,11 @@ export function ChatSidebar({
       userSelect: 'none'
     }}>
       {/* New Chat Action Header */}
-      <div style={{ padding: '12px', borderBottom: '1px solid #1e293b' }}>
+      <div style={{ padding: '12px', borderBottom: '1px solid rgba(217, 119, 6, 0.2)' }}>
         <button 
           onClick={onNewChat}
           title="Create New Chat (Ctrl+N)"
-          style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px',
-            padding: '10px 14px',
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 600,
-            fontSize: '14px',
-            cursor: 'pointer',
-            transition: 'background-color 0.2s'
-          }}
+          className="wooden-action-btn"
         >
           <Plus size={18} />
           <span>New Chat</span>
@@ -121,12 +106,13 @@ export function ChatSidebar({
           marginTop: '10px', 
           display: 'flex', 
           alignItems: 'center', 
-          backgroundColor: '#1e293b', 
+          backgroundColor: 'rgba(26, 34, 51, 0.8)', 
+          border: '1px solid rgba(217, 119, 6, 0.25)',
           borderRadius: '6px', 
           padding: '6px 10px',
           gap: '6px'
         }}>
-          <Search size={14} color="#64748b" />
+          <Search size={14} color="#d97706" />
           <input 
             type="text" 
             placeholder="Search chats..."

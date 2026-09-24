@@ -46,10 +46,10 @@ export default function App() {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="logo-badge">AI</div>
+          <div className="logo-badge">JB</div>
           <div>
-            <div style={{ fontWeight: 600, fontSize: '15px' }}>Offline Study AI</div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>v0.1.0 (Phase 1 Chat UI)</div>
+            <div style={{ fontWeight: 700, fontSize: '16px', color: '#ffedd5', letterSpacing: '0.3px' }}>JoyBoy</div>
+            <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 500 }}>v0.1.0 · Offline AI</div>
           </div>
         </div>
 
@@ -60,6 +60,7 @@ export default function App() {
           >
             <MessageSquare size={18} />
             <span>Chat</span>
+            {activeTab === 'chat' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
