@@ -1,0 +1,225 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  MessageSquare, 
+  GraduationCap, 
+  Database, 
+  FileText, 
+  RefreshCw, 
+  Settings as SettingsIcon, 
+  Wifi, 
+  WifiOff, 
+  Cpu, 
+  HardDrive 
+} from 'lucide-react';
+import { initDatabase, getDatabaseStatus } from '../database/db';
+import { detectEnvironment, SystemStatus } from '../core/environment';
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'sync' | 'settings'>('chat');
+  const [sysStatus, setSysStatus] = useState<SystemStatus>(detectEnvironment());
+  const [dbInfo, setDbInfo] = useState<{ initialized: boolean; tables: string[] }>({ initialized: false, tables: [] });
+
+  useEffect(() => {
+    async function setupDb() {
+      const ok = await initDatabase();
+      if (ok) {
+        setDbInfo(getDatabaseStatus());
+      }
+    }
+    setupDb();
+
+    const handleOnline = () => setSysStatus(prev => ({ ...prev, isOnline: true }));
+    const handleOffline = () => setSysStatus(prev => ({ ...prev, isOnline: false }));
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  return (
+    <div className="app-container">
+      {/* Sidebar Navigation */}
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <div className="logo-badge">AI</div>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: '15px' }}>Offline Study AI</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>v0.1.0 (Phase 0 Foundation)</div>
+          </div>
+        </div>
+
+        <nav className="nav-menu">
+          <button 
+            className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
+            onClick={() => setActiveTab('chat')}
+          >
+            <MessageSquare size={18} />
+            <span>Chat</span>
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'study' ? 'active' : ''}`}
+            onClick={() => setActiveTab('study')}
+          >
+            <GraduationCap size={18} />
+            <span>Study Mode</span>
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
+            onClick={() => setActiveTab('knowledge')}
+          >
+            <Database size={18} />
+            <span>Knowledge Base</span>
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
+            onClick={() => setActiveTab('documents')}
+          >
+            <FileText size={18} />
+            <span>Documents</span>
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'sync' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sync')}
+          >
+            <RefreshCw size={18} />
+            <span>Sync Center</span>
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <SettingsIcon size={18} />
+            <span>Settings</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>OS:</span>
+            <span style={{ color: '#cbd5e1' }}>{sysStatus.os}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span>Node:</span>
+            <span style={{ color: '#cbd5e1' }}>{sysStatus.nodeVersion}</span>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="main-content">
+        {/* Top Status Header */}
+        <header className="top-bar">
+          <div style={{ fontSize: '16px', fontWeight: 600 }}>
+            {activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('-', ' ')} View
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+            {/* AI Status Badge */}
+            <div className="status-badge badge-neutral">
+              <Cpu size={14} />
+              <span className="status-dot dot-amber"></span>
+              <span>AI: {sysStatus.aiStatus}</span>
+            </div>
+
+            {/* Internet Status Badge */}
+            <div className={`status-badge ${sysStatus.isOnline ? 'badge-online' : 'badge-offline'}`}>
+              {sysStatus.isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
+              <span className={`status-dot ${sysStatus.isOnline ? 'dot-green' : 'dot-red'}`}></span>
+              <span>Internet: {sysStatus.isOnline ? 'Online Sync Available' : 'Offline Mode'}</span>
+            </div>
+
+            {/* DB Status Badge */}
+            <div className={`status-badge ${dbInfo.initialized ? 'badge-online' : 'badge-offline'}`}>
+              <HardDrive size={14} />
+              <span className={`status-dot ${dbInfo.initialized ? 'dot-green' : 'dot-red'}`}></span>
+              <span>DB: {dbInfo.initialized ? 'Initialized' : 'Error'}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Dynamic View Sections */}
+        <section className="view-container">
+          {activeTab === 'chat' && (
+            <div className="card">
+              <h3>Chat Interface (Placeholder)</h3>
+              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
+                Local AI engine will be integrated in Phase 2. UI layout and history SQLite tables are initialized.
+              </p>
+              <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#1e293b', borderRadius: '8px' }}>
+                <div style={{ color: '#cbd5e1', fontStyle: 'italic' }}>System: Model is currently offline. Phase 0 foundation active.</div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'study' && (
+            <div className="card">
+              <h3>Study Mode (Placeholder)</h3>
+              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
+                Study modes (Explain, MCQ, CQ, Summarize, Viva Flashcards) will activate after Phase 2 & 6.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'knowledge' && (
+            <div className="card">
+              <h3>Knowledge Base & Local RAG (Placeholder)</h3>
+              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
+                Local indexed chunks and citations will be stored here in SQLite FTS5 index.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'documents' && (
+            <div className="card">
+              <h3>Document System (Placeholder)</h3>
+              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
+                Supported formats: PDF, TXT, MD, DOCX, Code files. Drop files to ingest locally.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'sync' && (
+            <div className="card">
+              <h3>Sync Center (Placeholder)</h3>
+              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
+                User-controlled allowlist sync dashboard. Network-aware and storage-aware sync engine.
+              </p>
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div className="card">
+              <h3>Settings & Configuration</h3>
+              <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <strong>Database Tables Initialized:</strong>
+                  <div style={{ color: '#94a3b8', marginTop: '4px', fontSize: '13px' }}>
+                    {dbInfo.tables.length > 0 ? dbInfo.tables.join(', ') : 'Initializing...'}
+                  </div>
+                </div>
+                <div>
+                  <strong>Model Path:</strong>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    value="[Not set - Model Manager ready for Phase 2/3]" 
+                    style={{ width: '100%', padding: '8px', marginTop: '4px', borderRadius: '4px', border: '1px solid #334155', backgroundColor: '#1e293b', color: '#94a3b8' }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
