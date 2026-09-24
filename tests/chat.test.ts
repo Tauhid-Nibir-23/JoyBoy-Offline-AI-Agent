@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { initDatabase, createConversationInDB, getAllConversations, insertMessageInDB, getMessagesByConversationId, deleteConversationFromDB } from '../database/db';
+import { 
+  initDatabase, 
+  createConversationInDB, 
+  getAllConversations, 
+  insertMessageInDB, 
+  getMessagesByConversationId, 
+  deleteConversationFromDB 
+} from '../database/db';
 import { ChatService } from '../ai/chatService';
 
 describe('Phase 1 Chat Logic & Database Persistence Tests', () => {
@@ -53,6 +60,33 @@ describe('Phase 1 Chat Logic & Database Persistence Tests', () => {
     expect(storedMsgs.length).toBe(2);
   });
 
+  it('auto-updates conversation title on first message sent', async () => {
+    const service = new ChatService();
+    const conv = service.createConversation('New Conversation');
+
+    await service.sendMessage(conv.id, 'What is computer architecture?');
+
+    const updated = service.getConversations().find((c) => c.id === conv.id);
+    expect(updated?.title).toBe('What is computer architecture?');
+  });
+
+  it('renames a conversation in database', () => {
+    const service = new ChatService();
+    const conv = service.createConversation('Initial Title');
+
+    service.renameConversation(conv.id, 'Renamed Study Topic');
+
+    const updated = service.getConversations().find((c) => c.id === conv.id);
+    expect(updated?.title).toBe('Renamed Study Topic');
+  });
+
+  it('throws an error when trying to send an empty message', async () => {
+    const service = new ChatService();
+    const conv = service.createConversation('Empty Test');
+
+    await expect(service.sendMessage(conv.id, '   ')).rejects.toThrow('Cannot send empty message');
+  });
+
   it('deletes conversation and associated messages', () => {
     const service = new ChatService();
     const conv = service.createConversation('To Delete');
@@ -62,3 +96,4 @@ describe('Phase 1 Chat Logic & Database Persistence Tests', () => {
     expect(all.find((c) => c.id === conv.id)).toBeUndefined();
   });
 });
+

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Plus, MessageSquare, Trash2, Edit2, Check, X, Search } from 'lucide-react';
 import { DBConversation } from '../../../database/db';
 
@@ -9,6 +9,8 @@ interface ChatSidebarProps {
   onNewChat: () => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
+  width?: number;
+  onWidthChange?: (newWidth: number) => void;
 }
 
 export function ChatSidebar({
@@ -17,11 +19,14 @@ export function ChatSidebar({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
-  onRenameConversation
+  onRenameConversation,
+  width = 260,
+  onWidthChange
 }: ChatSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const isResizing = useRef(false);
 
   const filtered = conversations.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -46,19 +51,50 @@ export function ChatSidebar({
     setEditingId(null);
   };
 
+  // Sidebar drag resizer handlers
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizing.current || !onWidthChange) return;
+    const newWidth = Math.min(Math.max(e.clientX, 200), 450);
+    onWidthChange(newWidth);
+  };
+
+  const handleMouseUp = () => {
+    isResizing.current = false;
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   return (
     <div style={{ 
-      width: '260px', 
+      width: `${width}px`, 
+      minWidth: `${width}px`,
       backgroundColor: '#0c1322', 
       borderRight: '1px solid #1e293b', 
       display: 'flex', 
       flexDirection: 'column',
-      height: '100%'
+      height: '100%',
+      position: 'relative',
+      userSelect: 'none'
     }}>
       {/* New Chat Action Header */}
       <div style={{ padding: '12px', borderBottom: '1px solid #1e293b' }}>
         <button 
           onClick={onNewChat}
+          title="Create New Chat (Ctrl+N)"
           style={{
             width: '100%',
             display: 'flex',
@@ -118,6 +154,7 @@ export function ChatSidebar({
           filtered.map((c) => {
             const isActive = c.id === activeId;
             const isEditing = c.id === editingId;
+            const formattedTime = formatTimestamp(c.updated_at);
 
             return (
               <div
@@ -127,7 +164,7 @@ export function ChatSidebar({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  padding: '10px 12px',
+                  padding: '9px 10px',
                   borderRadius: '6px',
                   marginBottom: '4px',
                   backgroundColor: isActive ? '#1e293b' : 'transparent',
@@ -162,19 +199,26 @@ export function ChatSidebar({
                       }}
                     />
                   ) : (
-                    <span style={{ 
-                      whiteSpace: 'nowrap', 
-                      overflow: 'hidden', 
-                      textOverflow: 'ellipsis', 
-                      fontWeight: isActive ? 600 : 400 
-                    }}>
-                      {c.title}
-                    </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+                      <span style={{ 
+                        whiteSpace: 'nowrap', 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        fontWeight: isActive ? 600 : 400 
+                      }}>
+                        {c.title}
+                      </span>
+                      {formattedTime && (
+                        <span style={{ fontSize: '10px', color: isActive ? '#94a3b8' : '#475569', marginTop: '1px' }}>
+                          {formattedTime}
+                        </span>
+                      )}
+                    </div>
                   )}
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginLeft: '6px' }}>
                   {isEditing ? (
                     <>
                       <button 
@@ -219,6 +263,38 @@ export function ChatSidebar({
           })
         )}
       </div>
+
+      {/* Resize Handle */}
+      {onWidthChange && (
+        <div
+          onMouseDown={handleMouseDown}
+          title="Drag to resize sidebar"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: -3,
+            width: 6,
+            height: '100%',
+            cursor: 'col-resize',
+            zIndex: 10
+          }}
+        />
+      )}
     </div>
   );
 }
+
+function formatTimestamp(dateStr: string): string {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+

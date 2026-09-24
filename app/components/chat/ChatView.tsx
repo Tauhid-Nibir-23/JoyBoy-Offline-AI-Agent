@@ -13,11 +13,24 @@ export function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(260);
 
   // Load conversations on mount
   useEffect(() => {
     loadConversationsList();
   }, []);
+
+  // Keyboard shortcut Ctrl+N for new chat
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        handleNewChat();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [conversations, activeId]);
 
   const loadConversationsList = () => {
     try {
@@ -95,6 +108,7 @@ export function ChatView() {
         const newConv = chatService.createConversation('New Chat');
         targetConvId = newConv.id;
         setActiveId(targetConvId);
+        setConversations(chatService.getConversations());
       }
 
       // Optimistically show user message
@@ -134,10 +148,12 @@ export function ChatView() {
         onNewChat={handleNewChat}
         onDeleteConversation={handleDeleteConversation}
         onRenameConversation={handleRenameConversation}
+        width={sidebarWidth}
+        onWidthChange={setSidebarWidth}
       />
 
       {/* Main Chat Content */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#090d16' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', backgroundColor: '#090d16', minWidth: 0 }}>
         {/* Error Notification Banner */}
         {errorMsg && (
           <div style={{
@@ -195,3 +211,4 @@ export function ChatView() {
     </div>
   );
 }
+

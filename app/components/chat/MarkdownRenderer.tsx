@@ -13,10 +13,39 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       {parts.map((part, index) => {
         if (part.type === 'code') {
           return <CodeBlock key={index} code={part.text} language={part.language} />;
+        } else if (part.type === 'h1') {
+          return <h1 key={index} style={{ fontSize: '20px', fontWeight: 700, color: '#f8fafc', marginTop: '6px', marginBottom: '2px' }}>{renderInline(part.text)}</h1>;
+        } else if (part.type === 'h2') {
+          return <h2 key={index} style={{ fontSize: '18px', fontWeight: 600, color: '#f8fafc', marginTop: '6px', marginBottom: '2px' }}>{renderInline(part.text)}</h2>;
         } else if (part.type === 'h3') {
-          return <h3 key={index} style={{ fontSize: '16px', fontWeight: 600, color: '#f8fafc', marginTop: '4px' }}>{renderInline(part.text)}</h3>;
+          return <h3 key={index} style={{ fontSize: '16px', fontWeight: 600, color: '#f8fafc', marginTop: '4px', marginBottom: '2px' }}>{renderInline(part.text)}</h3>;
         } else if (part.type === 'h4') {
-          return <h4 key={index} style={{ fontSize: '14px', fontWeight: 600, color: '#e2e8f0', marginTop: '4px' }}>{renderInline(part.text)}</h4>;
+          return <h4 key={index} style={{ fontSize: '14px', fontWeight: 600, color: '#e2e8f0', marginTop: '4px', marginBottom: '2px' }}>{renderInline(part.text)}</h4>;
+        } else if (part.type === 'blockquote') {
+          return (
+            <blockquote 
+              key={index} 
+              style={{ 
+                borderLeft: '3px solid #3b82f6', 
+                backgroundColor: 'rgba(30, 41, 59, 0.5)', 
+                padding: '6px 12px', 
+                margin: '4px 0', 
+                borderRadius: '0 4px 4px 0',
+                color: '#cbd5e1',
+                fontStyle: 'italic'
+              }}
+            >
+              {renderInline(part.text)}
+            </blockquote>
+          );
+        } else if (part.type === 'ol') {
+          return (
+            <ol key={index} style={{ paddingLeft: '22px', margin: '4px 0' }}>
+              {part.items.map((item, i) => (
+                <li key={i} style={{ color: '#cbd5e1', marginBottom: '2px' }}>{renderInline(item)}</li>
+              ))}
+            </ol>
+          );
         } else if (part.type === 'ul') {
           return (
             <ul key={index} style={{ paddingLeft: '20px', margin: '4px 0', listStyleType: 'disc' }}>
@@ -80,7 +109,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
       <pre style={{ 
         padding: '12px', 
         margin: 0, 
-        fontFamily: 'monospace', 
+        fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace', 
         fontSize: '13px', 
         color: '#38bdf8', 
         overflowX: 'auto',
@@ -93,13 +122,15 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 }
 
 function renderInline(text: string) {
-  // Simple inline parser for **bold** and `code`
-  const parts = text.split(/(\*\*.*?\*\*|`.*?`)/g);
+  // Inline parser supporting **bold**, *italic*, `code`
+  const parts = text.split(/(\*\*.*?\*\*|\*.*?\*|`.*?`)/g);
 
   return parts.map((part, idx) => {
-    if (part.startsWith('**') && part.endsWith('**')) {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
       return <strong key={idx} style={{ color: '#f8fafc', fontWeight: 600 }}>{part.slice(2, -2)}</strong>;
-    } else if (part.startsWith('`') && part.endsWith('`')) {
+    } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return <em key={idx} style={{ color: '#e2e8f0', fontStyle: 'italic' }}>{part.slice(1, -1)}</em>;
+    } else if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
       return (
         <code 
           key={idx} 
@@ -121,7 +152,7 @@ function renderInline(text: string) {
 }
 
 interface ParsedBlock {
-  type: 'p' | 'h3' | 'h4' | 'code' | 'ul';
+  type: 'p' | 'h1' | 'h2' | 'h3' | 'h4' | 'code' | 'ul' | 'ol' | 'blockquote';
   text: string;
   language: string;
   items: string[];
@@ -133,12 +164,17 @@ function parseMarkdown(text: string): ParsedBlock[] {
   let inCodeBlock = false;
   let codeBuffer: string[] = [];
   let codeLang = '';
-  let listBuffer: string[] = [];
+  let bulletBuffer: string[] = [];
+  let numberBuffer: string[] = [];
 
-  const flushList = () => {
-    if (listBuffer.length > 0) {
-      blocks.push({ type: 'ul', text: '', language: '', items: [...listBuffer] });
-      listBuffer = [];
+  const flushLists = () => {
+    if (bulletBuffer.length > 0) {
+      blocks.push({ type: 'ul', text: '', language: '', items: [...bulletBuffer] });
+      bulletBuffer = [];
+    }
+    if (numberBuffer.length > 0) {
+      blocks.push({ type: 'ol', text: '', language: '', items: [...numberBuffer] });
+      numberBuffer = [];
     }
   };
 
@@ -146,7 +182,7 @@ function parseMarkdown(text: string): ParsedBlock[] {
     const line = lines[i];
 
     if (line.startsWith('```')) {
-      flushList();
+      flushLists();
       if (inCodeBlock) {
         blocks.push({ type: 'code', text: codeBuffer.join('\n'), language: codeLang, items: [] });
         codeBuffer = [];
@@ -165,13 +201,27 @@ function parseMarkdown(text: string): ParsedBlock[] {
     }
 
     if (line.startsWith('- ') || line.startsWith('* ')) {
-      listBuffer.push(line.slice(2).trim());
+      if (numberBuffer.length > 0) flushLists();
+      bulletBuffer.push(line.slice(2).trim());
       continue;
-    } else {
-      flushList();
+    } 
+
+    const numMatch = line.match(/^(\d+)\.\s+(.*)/);
+    if (numMatch) {
+      if (bulletBuffer.length > 0) flushLists();
+      numberBuffer.push(numMatch[2].trim());
+      continue;
     }
 
-    if (line.startsWith('### ')) {
+    flushLists();
+
+    if (line.startsWith('> ')) {
+      blocks.push({ type: 'blockquote', text: line.slice(2).trim(), language: '', items: [] });
+    } else if (line.startsWith('# ')) {
+      blocks.push({ type: 'h1', text: line.slice(2).trim(), language: '', items: [] });
+    } else if (line.startsWith('## ')) {
+      blocks.push({ type: 'h2', text: line.slice(3).trim(), language: '', items: [] });
+    } else if (line.startsWith('### ')) {
       blocks.push({ type: 'h3', text: line.slice(4).trim(), language: '', items: [] });
     } else if (line.startsWith('#### ')) {
       blocks.push({ type: 'h4', text: line.slice(5).trim(), language: '', items: [] });
@@ -180,7 +230,7 @@ function parseMarkdown(text: string): ParsedBlock[] {
     }
   }
 
-  flushList();
+  flushLists();
 
   if (inCodeBlock && codeBuffer.length > 0) {
     blocks.push({ type: 'code', text: codeBuffer.join('\n'), language: codeLang, items: [] });
@@ -188,3 +238,4 @@ function parseMarkdown(text: string): ParsedBlock[] {
 
   return blocks;
 }
+
