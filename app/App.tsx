@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { initDatabase, getDatabaseStatus } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
+import { ChatView } from './components/chat/ChatView';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'sync' | 'settings'>('chat');
@@ -48,7 +49,7 @@ export default function App() {
           <div className="logo-badge">AI</div>
           <div>
             <div style={{ fontWeight: 600, fontSize: '15px' }}>Offline Study AI</div>
-            <div style={{ fontSize: '11px', color: '#64748b' }}>v0.1.0 (Phase 0 Foundation)</div>
+            <div style={{ fontSize: '11px', color: '#64748b' }}>v0.1.0 (Phase 1 Chat UI)</div>
           </div>
         </div>
 
@@ -147,18 +148,8 @@ export default function App() {
         </header>
 
         {/* Dynamic View Sections */}
-        <section className="view-container">
-          {activeTab === 'chat' && (
-            <div className="card">
-              <h3>Chat Interface (Placeholder)</h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
-                Local AI engine will be integrated in Phase 2. UI layout and history SQLite tables are initialized.
-              </p>
-              <div style={{ marginTop: '20px', padding: '16px', backgroundColor: '#1e293b', borderRadius: '8px' }}>
-                <div style={{ color: '#cbd5e1', fontStyle: 'italic' }}>System: Model is currently offline. Phase 0 foundation active.</div>
-              </div>
-            </div>
-          )}
+        <section className="view-container" style={{ padding: activeTab === 'chat' ? 0 : '24px' }}>
+          {activeTab === 'chat' && <ChatView />}
 
           {activeTab === 'study' && (
             <div className="card">
