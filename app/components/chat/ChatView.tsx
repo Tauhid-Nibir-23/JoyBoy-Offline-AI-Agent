@@ -207,15 +207,51 @@ export function ChatView() {
         flexDirection: 'column', 
         height: '100%', 
         position: 'relative',
-        backgroundImage: "linear-gradient(rgba(7, 11, 20, 0.25), rgba(7, 11, 20, 0.45)), url('/assets/chat_bg.png')",
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundColor: '#090d16',
-        minWidth: 0 
+        minWidth: 0,
+        backgroundColor: '#070a12',
+        overflow: 'hidden'
       }}>
+        {/* Dynamic Background Art Layer (transitions to higher blur & lower opacity once conversation begins) */}
+        <div 
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: '-12px',
+            backgroundImage: "url('/assets/chat_bg.png')",
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: messages.length > 0 
+              ? 'blur(22px) brightness(0.30) saturate(0.75)' 
+              : 'blur(0px) brightness(0.85) saturate(1.05)',
+            opacity: messages.length > 0 ? 0.20 : 0.85,
+            transform: messages.length > 0 ? 'scale(1.06)' : 'scale(1)',
+            transition: 'filter 0.6s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.6s ease, transform 0.6s ease',
+            pointerEvents: 'none',
+            zIndex: 0
+          }} 
+        />
+
+        {/* Dynamic Readability Tint Overlay */}
+        <div 
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: messages.length > 0
+              ? 'radial-gradient(ellipse at 50% 30%, rgba(10, 15, 26, 0.88) 0%, rgba(6, 9, 16, 0.96) 100%)'
+              : 'linear-gradient(180deg, rgba(7, 11, 20, 0.25) 0%, rgba(7, 11, 20, 0.45) 100%)',
+            backdropFilter: messages.length > 0 ? 'blur(10px)' : 'none',
+            transition: 'background 0.6s ease, backdrop-filter 0.6s ease',
+            pointerEvents: 'none',
+            zIndex: 0
+          }} 
+        />
+
         {/* Error Notification Banner */}
         {errorMsg && (
           <div style={{
+            position: 'relative',
+            zIndex: 1,
             backgroundColor: 'rgba(239, 68, 68, 0.15)',
             borderBottom: '1px solid rgba(239, 68, 68, 0.3)',
             color: '#fca5a5',
@@ -240,13 +276,16 @@ export function ChatView() {
 
         {/* Conversation Header */}
         <div style={{
+          position: 'relative',
+          zIndex: 1,
           padding: '12px 24px',
           borderBottom: '1px solid rgba(217, 119, 6, 0.2)',
-          backgroundColor: 'rgba(10, 15, 29, 0.7)',
+          backgroundColor: messages.length > 0 ? 'rgba(8, 12, 22, 0.88)' : 'rgba(10, 15, 29, 0.7)',
           backdropFilter: 'blur(10px)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          justifyContent: 'space-between',
+          transition: 'background-color 0.4s ease'
         }}>
           <div>
             <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
@@ -268,19 +307,23 @@ export function ChatView() {
         </div>
 
         {/* Message Thread */}
-        <MessageList 
-          messages={messages} 
-          isLoading={isLoading} 
-          streamingContent={streamingContent}
-          onSuggestionClick={(prompt) => handleSendMessage(prompt)} 
-        />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, position: 'relative', zIndex: 1 }}>
+          <MessageList 
+            messages={messages} 
+            isLoading={isLoading} 
+            streamingContent={streamingContent}
+            onSuggestionClick={(prompt) => handleSendMessage(prompt)} 
+          />
+        </div>
 
         {/* Bottom Composer */}
-        <MessageComposer 
-          onSend={handleSendMessage} 
-          onStop={handleStopGeneration}
-          disabled={isLoading} 
-        />
+        <div style={{ position: 'relative', zIndex: 1, width: '100%' }}>
+          <MessageComposer 
+            onSend={handleSendMessage} 
+            onStop={handleStopGeneration}
+            disabled={isLoading} 
+          />
+        </div>
       </div>
     </div>
   );

@@ -206,17 +206,18 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
               )}
 
               <div style={{
-                backgroundColor: isUser ? 'rgba(30, 58, 138, 0.88)' : 'rgba(18, 24, 38, 0.92)',
-                border: isUser ? '1px solid #3b82f6' : '1px solid rgba(217, 119, 6, 0.35)',
-                padding: '12px 16px',
+                backgroundColor: isUser ? 'rgba(30, 64, 150, 0.94)' : 'rgba(16, 22, 35, 0.96)',
+                border: isUser ? '1px solid rgba(96, 165, 250, 0.5)' : '1px solid rgba(217, 119, 6, 0.35)',
+                padding: '13px 18px',
                 borderRadius: '12px',
                 color: '#f8fafc',
-                fontSize: '14px',
-                backdropFilter: 'blur(8px)',
-                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
+                fontSize: '14.5px',
+                lineHeight: 1.6,
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 4px 18px rgba(0, 0, 0, 0.55)'
               }}>
                 {isUser ? (
-                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{msg.content}</div>
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{msg.content}</div>
                 ) : (
                   <MarkdownRenderer content={msg.content} />
                 )}
@@ -233,13 +234,20 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
             width: '32px',
             height: '32px',
             borderRadius: '8px',
-            backgroundColor: '#1e293b',
+            backgroundColor: 'rgba(28, 16, 10, 0.85)',
+            border: '1px solid rgba(245, 158, 11, 0.4)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0
+            flexShrink: 0,
+            boxShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
+            overflow: 'hidden'
           }}>
-            <Bot size={18} color="#38bdf8" />
+            <img 
+              src="/assets/joyboy_logo.png" 
+              alt="JoyBoy" 
+              style={{ width: '26px', height: '26px', objectFit: 'contain' }} 
+            />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -262,14 +270,15 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
             </div>
 
             <div style={{
-              backgroundColor: 'rgba(18, 24, 38, 0.92)',
+              backgroundColor: 'rgba(16, 22, 35, 0.96)',
               border: '1px solid rgba(217, 119, 6, 0.35)',
-              padding: '12px 16px',
+              padding: '13px 18px',
               borderRadius: '12px',
               color: '#f8fafc',
-              fontSize: '14px',
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
+              fontSize: '14.5px',
+              lineHeight: 1.6,
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 4px 18px rgba(0, 0, 0, 0.55)'
             }}>
               {streamingContent ? (
                 <div>
