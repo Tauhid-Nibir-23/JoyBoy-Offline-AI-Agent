@@ -1,4 +1,4 @@
-// Offline Study AI - Document Service (Phase 3A)
+// Offline Study AI - Document Service (Phase 3A & 3B)
 import { 
   DocumentRecord, 
   ImportResult, 
@@ -6,6 +6,7 @@ import {
   FileImportInput 
 } from './types';
 import { extractDocumentText } from './extractors';
+import { chunkService } from './chunking';
 import { 
   getAllDocuments, 
   getDocumentById, 
@@ -148,6 +149,18 @@ export class DocumentService {
             error_message: null,
             modified_at: new Date().toISOString()
           });
+
+          // Phase 3B Processing Pipeline: Normalize -> Chunk -> Store chunks
+          try {
+            await chunkService.processDocumentChunks(docId);
+          } catch (chunkErr: any) {
+            updateDocumentInDB(docId, {
+              extraction_status: 'Failed',
+              error_message: `Chunking failed: ${chunkErr?.message || String(chunkErr)}`,
+              modified_at: new Date().toISOString()
+            });
+            await chunkService.deleteChunksForDocument(docId);
+          }
         }
       } catch (extractErr: any) {
         updateDocumentInDB(docId, {
@@ -202,6 +215,7 @@ export class DocumentService {
    */
   public async deleteDocument(id: string): Promise<boolean> {
     try {
+      await chunkService.deleteChunksForDocument(id);
       deleteDocumentFromDB(id);
       return true;
     } catch {

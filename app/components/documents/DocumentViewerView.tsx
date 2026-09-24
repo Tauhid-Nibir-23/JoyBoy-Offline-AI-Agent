@@ -1,5 +1,5 @@
-// Offline Study AI - Document Viewer (Phase 3A)
-import React, { useState, useMemo } from 'react';
+// Offline Study AI - Document Viewer & Chunk Inspector (Phase 3A & 3B)
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, 
   Copy, 
@@ -10,9 +10,15 @@ import {
   Hash, 
   Calendar, 
   HardDrive, 
-  AlertCircle 
+  AlertCircle,
+  RefreshCw,
+  Layers,
+  BookOpen,
+  ChevronRight
 } from 'lucide-react';
 import { DocumentRecord } from '../../../documents/types';
+import { DocumentChunk } from '../../../documents/chunking/types';
+import { chunkService } from '../../../documents/chunking/chunkService';
 
 interface DocumentViewerViewProps {
   document: DocumentRecord;
@@ -36,11 +42,52 @@ function formatDate(iso: string | null | undefined): string {
 }
 
 export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document: doc, onBack }) => {
+  const [activeTab, setActiveTab] = useState<'text' | 'chunks'>('text');
+  const [chunks, setChunks] = useState<DocumentChunk[]>([]);
+  const [selectedChunkId, setSelectedChunkId] = useState<string | null>(null);
+  const [isReprocessing, setIsReprocessing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copied, setCopied] = useState(false);
+  const [copiedChunkText, setCopiedChunkText] = useState(false);
   const [copiedHash, setCopiedHash] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const textContent = doc.extracted_text || '';
+
+  const loadChunks = async () => {
+    try {
+      const list = await chunkService.getChunksForDocument(doc.id);
+      setChunks(list);
+      if (list.length > 0 && !selectedChunkId) {
+        setSelectedChunkId(list[0].id);
+      }
+    } catch (err: any) {
+      console.error('Failed to load chunks:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadChunks();
+  }, [doc.id]);
+
+  const handleReprocess = async () => {
+    setIsReprocessing(true);
+    setActionMessage(null);
+    try {
+      const updatedChunks = await chunkService.reprocessDocument(doc.id);
+      setChunks(updatedChunks);
+      if (updatedChunks.length > 0) {
+        setSelectedChunkId(updatedChunks[0].id);
+      }
+      setActionMessage(`Document successfully reprocessed into ${updatedChunks.length} chunks.`);
+      setTimeout(() => setActionMessage(null), 4000);
+    } catch (err: any) {
+      setActionMessage(`Reprocessing failed: ${err?.message || String(err)}`);
+      setTimeout(() => setActionMessage(null), 5000);
+    } finally {
+      setIsReprocessing(false);
+    }
+  };
 
   const handleCopyText = async () => {
     if (!textContent) return;
@@ -48,6 +95,16 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
       await navigator.clipboard.writeText(textContent);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback
+    }
+  };
+
+  const handleCopyChunkText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedChunkText(true);
+      setTimeout(() => setCopiedChunkText(false), 2000);
     } catch {
       // Fallback
     }
@@ -104,6 +161,8 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
     };
   }, [textContent, searchQuery]);
 
+  const selectedChunk = chunks.find(c => c.id === selectedChunkId) || chunks[0] || null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '16px' }}>
       {/* Top Header / Back Bar */}
@@ -139,6 +198,31 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
         </button>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Reprocess Button */}
+          <button
+            onClick={handleReprocess}
+            disabled={isReprocessing || !textContent}
+            title="Reprocess document into fresh clean chunks"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: '#1e293b',
+              color: '#f8fafc',
+              border: '1px solid #d97706',
+              padding: '7px 14px',
+              borderRadius: '6px',
+              cursor: isReprocessing || !textContent ? 'not-allowed' : 'pointer',
+              fontSize: '13px',
+              fontWeight: 500,
+              opacity: isReprocessing || !textContent ? 0.6 : 1
+            }}
+          >
+            <RefreshCw size={14} className={isReprocessing ? 'spin-animation' : ''} style={{ color: '#f59e0b' }} />
+            <span>{isReprocessing ? 'Reprocessing...' : 'Reprocess Chunks'}</span>
+          </button>
+
+          {/* Copy Text Button */}
           <button
             onClick={handleCopyText}
             disabled={!textContent}
@@ -162,6 +246,22 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
           </button>
         </div>
       </div>
+
+      {/* Action Notification Message */}
+      {actionMessage && (
+        <div
+          style={{
+            padding: '10px 14px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            color: '#6ee7b7'
+          }}
+        >
+          {actionMessage}
+        </div>
+      )}
 
       {/* Document Metadata Banner */}
       <div 
@@ -241,7 +341,7 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
         <div 
           style={{ 
             display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', 
             gap: '12px',
             background: '#070b14',
             padding: '12px',
@@ -261,6 +361,10 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
           <div>
             <span style={{ color: '#64748b' }}>Extracted Chars:</span>{' '}
             <strong style={{ color: '#f59e0b' }}>{doc.character_count.toLocaleString()}</strong>
+          </div>
+          <div>
+            <span style={{ color: '#64748b' }}>Knowledge Chunks:</span>{' '}
+            <strong style={{ color: '#6ee7b7' }}>{chunks.length} chunks</strong>
           </div>
           <div>
             <span style={{ color: '#64748b' }}>Imported:</span>{' '}
@@ -309,105 +413,304 @@ export const DocumentViewerView: React.FC<DocumentViewerViewProps> = ({ document
         )}
       </div>
 
-      {/* In-Document Search Toolbar */}
-      <div 
-        style={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'space-between',
-          gap: '12px',
-          background: '#0f172a',
-          border: '1px solid #1e293b',
-          borderRadius: '8px',
-          padding: '8px 14px'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
-          <Search size={16} style={{ color: '#64748b' }} />
-          <input
-            type="text"
-            placeholder="Search within extracted text..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#f8fafc',
-              fontSize: '13px',
-              width: '100%',
-              outline: 'none'
-            }}
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#64748b',
-                cursor: 'pointer'
-              }}
-            >
-              <X size={15} />
-            </button>
-          )}
-        </div>
+      {/* View Switcher: Extracted Text vs Knowledge Chunks */}
+      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #1e293b', paddingBottom: '8px' }}>
+        <button
+          onClick={() => setActiveTab('text')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: activeTab === 'text' ? '#1e293b' : 'transparent',
+            color: activeTab === 'text' ? '#f59e0b' : '#94a3b8',
+            border: activeTab === 'text' ? '1px solid #d97706' : '1px solid transparent'
+          }}
+        >
+          <BookOpen size={15} />
+          Extracted Text
+        </button>
 
-        {searchQuery.trim() && (
-          <div style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
-            {matchCount} {matchCount === 1 ? 'match' : 'matches'} found
-          </div>
-        )}
+        <button
+          onClick={() => setActiveTab('chunks')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '6px',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            background: activeTab === 'chunks' ? '#1e293b' : 'transparent',
+            color: activeTab === 'chunks' ? '#f59e0b' : '#94a3b8',
+            border: activeTab === 'chunks' ? '1px solid #d97706' : '1px solid transparent'
+          }}
+        >
+          <Layers size={15} />
+          Knowledge Chunks ({chunks.length})
+        </button>
       </div>
 
-      {/* Extracted Text Viewing Area */}
-      <div 
-        style={{ 
-          flex: 1, 
-          background: '#070b14', 
-          border: '1px solid #1e293b', 
-          borderRadius: '8px', 
-          padding: '20px',
-          overflowY: 'auto',
-          minHeight: '350px'
-        }}
-      >
-        {textContent ? (
-          <pre 
-            style={{ 
-              whiteSpace: 'pre-wrap', 
-              wordBreak: 'break-word',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
-              fontSize: '13px',
-              lineHeight: '1.6',
-              color: '#e2e8f0',
-              margin: 0
-            }}
-          >
-            {highlightedElements}
-          </pre>
-        ) : (
+      {/* Tab 1: Extracted Text */}
+      {activeTab === 'text' && (
+        <>
+          {/* In-Document Search Toolbar */}
           <div 
             style={{ 
               display: 'flex', 
-              flexDirection: 'column', 
               alignItems: 'center', 
-              justifyContent: 'center', 
-              height: '100%',
-              color: '#64748b',
-              textAlign: 'center',
-              padding: '40px'
+              justifyContent: 'space-between',
+              gap: '12px',
+              background: '#0f172a',
+              border: '1px solid #1e293b',
+              borderRadius: '8px',
+              padding: '8px 14px'
             }}
           >
-            <FileText size={40} style={{ marginBottom: '12px', color: '#334155' }} />
-            <p style={{ fontSize: '14px', fontWeight: 500, color: '#94a3b8' }}>
-              {doc.extraction_status === 'Failed' 
-                ? 'Text extraction failed for this document.' 
-                : 'No readable text content found in this document.'}
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+              <Search size={16} style={{ color: '#64748b' }} />
+              <input
+                type="text"
+                placeholder="Search within extracted text..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#f8fafc',
+                  fontSize: '13px',
+                  width: '100%',
+                  outline: 'none'
+                }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            {searchQuery.trim() && (
+              <div style={{ fontSize: '12px', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                {matchCount} {matchCount === 1 ? 'match' : 'matches'} found
+              </div>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* Extracted Text Viewing Area */}
+          <div 
+            style={{ 
+              flex: 1, 
+              background: '#070b14', 
+              border: '1px solid #1e293b', 
+              borderRadius: '8px', 
+              padding: '20px',
+              overflowY: 'auto',
+              minHeight: '350px'
+            }}
+          >
+            {textContent ? (
+              <pre 
+                style={{ 
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-word',
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                  fontSize: '13px',
+                  lineHeight: '1.6',
+                  color: '#e2e8f0',
+                  margin: 0
+                }}
+              >
+                {highlightedElements}
+              </pre>
+            ) : (
+              <div 
+                style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  height: '100%',
+                  color: '#64748b',
+                  textAlign: 'center',
+                  padding: '40px'
+                }}
+              >
+                <FileText size={40} style={{ marginBottom: '12px', color: '#334155' }} />
+                <p style={{ fontSize: '14px', fontWeight: 500, color: '#94a3b8' }}>
+                  {doc.extraction_status === 'Failed' 
+                    ? 'Text extraction failed for this document.' 
+                    : 'No readable text content found in this document.'}
+                </p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Tab 2: Knowledge Chunks Inspection UI */}
+      {activeTab === 'chunks' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: '16px', flex: 1, minHeight: '400px' }}>
+          {/* Chunks List Column */}
+          <div 
+            style={{ 
+              background: '#0f172a', 
+              border: '1px solid #1e293b', 
+              borderRadius: '8px', 
+              overflowY: 'auto', 
+              display: 'flex', 
+              flexDirection: 'column',
+              maxHeight: '550px'
+            }}
+          >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #1e293b', background: '#0a0f1d' }}>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>
+                Document Chunks ({chunks.length})
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                Normalized segments ready for local RAG
+              </div>
+            </div>
+
+            {chunks.length === 0 ? (
+              <div style={{ padding: '30px 16px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
+                No chunks generated yet. Click "Reprocess Chunks" above to generate chunks.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {chunks.map((chunk) => {
+                  const isSelected = selectedChunk?.id === chunk.id;
+                  return (
+                    <div
+                      key={chunk.id}
+                      onClick={() => setSelectedChunkId(chunk.id)}
+                      style={{
+                        padding: '12px 14px',
+                        borderBottom: '1px solid #1e293b',
+                        cursor: 'pointer',
+                        background: isSelected ? 'rgba(245, 158, 11, 0.1)' : 'transparent',
+                        borderLeft: isSelected ? '3px solid #f59e0b' : '3px solid transparent',
+                        transition: 'background 0.15s ease'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: isSelected ? '#f59e0b' : '#f8fafc' }}>
+                          Chunk #{chunk.chunkIndex + 1}
+                        </span>
+                        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                          ~{chunk.tokenEstimate} tokens
+                        </span>
+                      </div>
+
+                      {chunk.heading && (
+                        <div style={{ fontSize: '11px', color: '#cbd5e1', fontWeight: 500, marginTop: '3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          § {chunk.heading}
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: '11px', color: '#64748b', marginTop: '4px', lineHeight: '1.4' }}>
+                        {chunk.text.substring(0, 90)}...
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '6px', fontSize: '10px', color: '#94a3b8' }}>
+                        <span>{chunk.characterCount} chars</span>
+                        {chunk.pageNumber && <span>Page {chunk.pageNumber}</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Chunk Inspector Column */}
+          <div 
+            style={{ 
+              background: '#070b14', 
+              border: '1px solid #1e293b', 
+              borderRadius: '8px', 
+              padding: '16px',
+              display: 'flex',
+              flexDirection: 'column',
+              maxHeight: '550px'
+            }}
+          >
+            {selectedChunk ? (
+              <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #1e293b', paddingBottom: '10px' }}>
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: '#f8fafc' }}>
+                      Chunk #{selectedChunk.chunkIndex + 1} Details
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8', marginTop: '2px' }}>
+                      Offset: {selectedChunk.startOffset}–{selectedChunk.endOffset} · {selectedChunk.characterCount} chars · ~{selectedChunk.tokenEstimate} estimated tokens
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => handleCopyChunkText(selectedChunk.text)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      background: copiedChunkText ? '#065f46' : '#1e293b',
+                      color: copiedChunkText ? '#34d399' : '#cbd5e1',
+                      border: '1px solid #334155',
+                      padding: '5px 10px',
+                      borderRadius: '5px',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      fontWeight: 500
+                    }}
+                  >
+                    {copiedChunkText ? <Check size={13} /> : <Copy size={13} />}
+                    {copiedChunkText ? 'Copied' : 'Copy Chunk'}
+                  </button>
+                </div>
+
+                {selectedChunk.heading && (
+                  <div style={{ background: '#0f172a', padding: '6px 10px', borderRadius: '4px', fontSize: '12px', color: '#f59e0b' }}>
+                    <strong>Heading:</strong> {selectedChunk.heading}
+                  </div>
+                )}
+
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <pre 
+                    style={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+                      fontSize: '12.5px',
+                      lineHeight: '1.6',
+                      color: '#e2e8f0',
+                      margin: 0
+                    }}
+                  >
+                    {selectedChunk.text}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', fontSize: '13px' }}>
+                Select a chunk to inspect its full text and metadata
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

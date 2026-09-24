@@ -46,6 +46,21 @@ export interface DBDocument {
   error_message: string | null;
 }
 
+export interface DBDocumentChunk {
+  id: string;
+  document_id: string;
+  chunk_index: number;
+  text: string;
+  start_offset: number;
+  end_offset: number;
+  character_count: number;
+  token_estimate: number;
+  heading: string | null;
+  page_number: number | null;
+  metadata_json: string | null;
+  created_at?: string;
+}
+
 const INITIAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -83,6 +98,26 @@ CREATE TABLE IF NOT EXISTS documents (
     character_count INTEGER DEFAULT 0,
     error_message TEXT
 );
+
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    start_offset INTEGER NOT NULL,
+    end_offset INTEGER NOT NULL,
+    character_count INTEGER NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    heading TEXT,
+    page_number INTEGER,
+    metadata_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    UNIQUE(document_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
 
 INSERT OR IGNORE INTO settings (key, value) VALUES 
 ('app_name', 'Offline Study AI'),
@@ -155,7 +190,7 @@ export async function initDatabase(): Promise<boolean> {
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
-      const requiredTables = ['settings', 'conversations', 'messages', 'documents'];
+      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks'];
       const missing = requiredTables.filter((t) => !tables.includes(t));
       if (missing.length > 0) {
         throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
@@ -413,6 +448,86 @@ export function updateDocumentInDB(id: string, updates: Partial<DBDocument>): vo
 }
 
 export function deleteDocumentFromDB(id: string): void {
+  executeQuery('DELETE FROM document_chunks WHERE document_id = ?', [id]);
   executeQuery('DELETE FROM documents WHERE id = ?', [id]);
 }
+
+// Document Chunk Queries
+export function getChunksByDocumentId(documentId: string): DBDocumentChunk[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery(
+    'SELECT * FROM document_chunks WHERE document_id = ? ORDER BY chunk_index ASC',
+    [documentId]
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    document_id: String(r.document_id),
+    chunk_index: Number(r.chunk_index),
+    text: String(r.text),
+    start_offset: Number(r.start_offset),
+    end_offset: Number(r.end_offset),
+    character_count: Number(r.character_count),
+    token_estimate: Number(r.token_estimate),
+    heading: r.heading !== null && r.heading !== undefined ? String(r.heading) : null,
+    page_number: r.page_number !== null && r.page_number !== undefined ? Number(r.page_number) : null,
+    metadata_json: r.metadata_json !== null && r.metadata_json !== undefined ? String(r.metadata_json) : null,
+    created_at: r.created_at ? String(r.created_at) : undefined
+  }));
+}
+
+export function getChunkById(chunkId: string): DBDocumentChunk | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM document_chunks WHERE id = ?', [chunkId]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    document_id: String(r.document_id),
+    chunk_index: Number(r.chunk_index),
+    text: String(r.text),
+    start_offset: Number(r.start_offset),
+    end_offset: Number(r.end_offset),
+    character_count: Number(r.character_count),
+    token_estimate: Number(r.token_estimate),
+    heading: r.heading !== null && r.heading !== undefined ? String(r.heading) : null,
+    page_number: r.page_number !== null && r.page_number !== undefined ? Number(r.page_number) : null,
+    metadata_json: r.metadata_json !== null && r.metadata_json !== undefined ? String(r.metadata_json) : null,
+    created_at: r.created_at ? String(r.created_at) : undefined
+  };
+}
+
+export function insertChunkInDB(chunk: DBDocumentChunk): DBDocumentChunk {
+  executeQuery(
+    `INSERT INTO document_chunks (
+      id, document_id, chunk_index, text, start_offset, end_offset,
+      character_count, token_estimate, heading, page_number, metadata_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      chunk.id,
+      chunk.document_id,
+      chunk.chunk_index,
+      chunk.text,
+      chunk.start_offset,
+      chunk.end_offset,
+      chunk.character_count,
+      chunk.token_estimate,
+      chunk.heading,
+      chunk.page_number,
+      chunk.metadata_json
+    ]
+  );
+  return chunk;
+}
+
+export function insertChunksInDB(chunks: DBDocumentChunk[]): void {
+  if (!dbInstance || chunks.length === 0) return;
+  for (const chunk of chunks) {
+    insertChunkInDB(chunk);
+  }
+}
+
+export function deleteChunksByDocumentId(documentId: string): void {
+  executeQuery('DELETE FROM document_chunks WHERE document_id = ?', [documentId]);
+}
+
 

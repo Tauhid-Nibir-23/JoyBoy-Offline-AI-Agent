@@ -37,6 +37,26 @@ CREATE TABLE IF NOT EXISTS documents (
     error_message TEXT
 );
 
+CREATE TABLE IF NOT EXISTS document_chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    start_offset INTEGER NOT NULL,
+    end_offset INTEGER NOT NULL,
+    character_count INTEGER NOT NULL,
+    token_estimate INTEGER NOT NULL,
+    heading TEXT,
+    page_number INTEGER,
+    metadata_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE,
+    UNIQUE(document_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
+CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
+
 -- Default Settings Insertions
 INSERT OR IGNORE INTO settings (key, value) VALUES 
 ('app_name', 'Offline Study AI'),
