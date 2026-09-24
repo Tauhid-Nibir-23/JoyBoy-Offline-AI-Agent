@@ -40,36 +40,40 @@ export function getRecommendedThreadCount(logicalCores: number): number {
 }
 
 export async function detectHardware(): Promise<HardwareProfile> {
-  // 1. Try native Tauri backend first (most accurate, native Windows/Linux system calls)
-  const tauriProfile = await tryTauriInvoke<HardwareProfile>('get_hardware_profile');
-  if (tauriProfile && tauriProfile.cpu && tauriProfile.os) {
-    return tauriProfile;
+  try {
+    // 1. Try native Tauri backend first (most accurate, native Windows/Linux system calls)
+    const tauriProfile = await tryTauriInvoke<HardwareProfile>('get_hardware_profile');
+    if (tauriProfile && tauriProfile.cpu && tauriProfile.os) {
+      return tauriProfile;
+    }
+
+    // 2. Fall back to platform-specific adapters dynamically to preserve clean cross-platform boundary
+    const isWindows = typeof process !== 'undefined' 
+      ? process.platform === 'win32'
+      : typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
+
+    const isLinux = typeof process !== 'undefined'
+      ? process.platform === 'linux'
+      : typeof navigator !== 'undefined' && /Linux/i.test(navigator.userAgent);
+
+    if (isWindows) {
+      const { windowsHardwareAdapter } = await import('./windows');
+      return await windowsHardwareAdapter.detect();
+    }
+
+    if (isLinux) {
+      const { linuxHardwareAdapter } = await import('./linux');
+      return await linuxHardwareAdapter.detect();
+    }
+  } catch (err) {
+    console.warn('Hardware detection encountered an error, using safe fallback profile:', err);
   }
 
-  // 2. Fall back to platform-specific adapters
-  const isWindows = typeof process !== 'undefined' 
-    ? process.platform === 'win32'
-    : typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
-
-  const isLinux = typeof process !== 'undefined'
-    ? process.platform === 'linux'
-    : typeof navigator !== 'undefined' && /Linux/i.test(navigator.userAgent);
-
-  if (isWindows) {
-    const { windowsHardwareAdapter } = await import('./windows');
-    return await windowsHardwareAdapter.detect();
-  }
-
-  if (isLinux) {
-    const { linuxHardwareAdapter } = await import('./linux');
-    return await linuxHardwareAdapter.detect();
-  }
-
-  // Generic fallback
+  // Safe generic fallback (never throws or blocks initialization)
   return {
-    os: 'Unknown',
-    architecture: 'Unknown',
-    cpu: 'Unknown CPU',
+    os: typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent) ? 'Windows' : 'Generic Desktop',
+    architecture: 'x64',
+    cpu: 'Local CPU',
     logicalCores: typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 4 : 4,
     physicalCores: null,
     totalRamBytes: 0,

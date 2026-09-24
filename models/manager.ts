@@ -97,7 +97,17 @@ export class ModelManager {
         this.activeModelId = savedId;
       }
     }
-    return this.activeModelId ? this.registeredModels.get(this.activeModelId) || null : null;
+    const model = this.activeModelId ? this.registeredModels.get(this.activeModelId) || null : null;
+    if (model && !model.path) {
+      const savedPath = getSetting('model_path');
+      if (savedPath) {
+        model.path = savedPath;
+        if (model.status === 'Not Installed') {
+          model.status = 'Ready';
+        }
+      }
+    }
+    return model;
   }
 
   public async validateModelFile(filePath: string): Promise<ModelValidationResult> {

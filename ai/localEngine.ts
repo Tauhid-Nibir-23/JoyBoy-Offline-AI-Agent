@@ -106,6 +106,17 @@ export class LocalAIEngine {
       return true;
     }
 
+    // Check if server is already responding on 8088
+    try {
+      const check = await fetch('http://127.0.0.1:8088/health').catch(() => null);
+      if (check && check.ok) {
+        this.serverPort = 8088;
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
     // Try starting llama-server once
     try {
       const port = await tryTauriInvoke<number>('start_local_llama_server', {
@@ -116,6 +127,15 @@ export class LocalAIEngine {
       });
 
       if (port) {
+        // Wait for server /health to become ready
+        for (let i = 0; i < 30; i++) {
+          await new Promise((r) => setTimeout(r, 200));
+          const check = await fetch(`http://127.0.0.1:${port}/health`).catch(() => null);
+          if (check && check.ok) {
+            this.serverPort = port;
+            return true;
+          }
+        }
         this.serverPort = port;
         return true;
       }
@@ -294,6 +314,11 @@ export class LocalAIEngine {
       const modelPath = this.activeModel!.path!;
       const maxTokens = options?.maxTokens ?? this.config.maxTokens;
       const temperature = options?.temperature ?? this.config.temperature;
+
+      // Ensure server is started and healthy before generating
+      if (!this.serverPort && modelPath) {
+        await this.loadModel(modelPath);
+      }
 
       // 2. If persistent local server is running, use SSE streaming on 127.0.0.1
       if (this.serverPort) {

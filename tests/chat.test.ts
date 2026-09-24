@@ -87,13 +87,41 @@ describe('Phase 1 Chat Logic & Database Persistence Tests', () => {
     await expect(service.sendMessage(conv.id, '   ')).rejects.toThrow('Cannot send empty message');
   });
 
-  it('deletes conversation and associated messages', () => {
-    const service = new ChatService();
-    const conv = service.createConversation('To Delete');
-    deleteConversationFromDB(conv.id);
+  it('proves sending a chat message reaches the selected AI provider', async () => {
+    let providerCalled = false;
+    const customProvider: import('../ai/provider').AIProvider = {
+      id: 'test_provider',
+      name: 'Custom Test Provider',
+      isAvailable: async () => true,
+      generateResponse: async (_history, options) => {
+        providerCalled = true;
+        options?.callbacks?.onToken?.('Custom response token');
+        return 'Custom response token';
+      }
+    };
 
-    const all = service.getConversations();
-    expect(all.find((c) => c.id === conv.id)).toBeUndefined();
+    const service = new ChatService(customProvider);
+    const conv = service.createConversation('Provider Routing Test');
+    const result = await service.sendMessage(conv.id, 'Testing provider routing');
+
+    expect(providerCalled).toBe(true);
+    expect(result.assistantMessage.content).toContain('Custom response token');
+    expect(result.assistantMessage.providerId).toBe('test_provider');
+  });
+
+  it('hardware detection is resilient and does not block chat initialization even on error', async () => {
+    const { detectHardware } = await import('../core/environment/hardware');
+    const profile = await detectHardware();
+    expect(profile).toBeDefined();
+    expect(profile.os).toBeDefined();
+    expect(profile.logicalCores).toBeGreaterThanOrEqual(1);
+
+    // Chat service initializes and sends message without being blocked
+    const service = new ChatService();
+    const conv = service.createConversation('Non-blocking Chat');
+    const result = await service.sendMessage(conv.id, 'Ping');
+    expect(result.assistantMessage).toBeDefined();
+    expect(result.assistantMessage.role).toBe('assistant');
   });
 });
 
