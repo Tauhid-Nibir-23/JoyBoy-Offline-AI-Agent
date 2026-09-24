@@ -123,6 +123,40 @@ export class LocalAIEngine {
       // llama-server not available; fallback to CLI mode
     }
 
+    // Node.js fallback (for integration testing & scripts)
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      try {
+        const res = await fetch('http://127.0.0.1:8088/health').catch(() => null);
+        if (res && res.ok) {
+          this.serverPort = 8088;
+          return true;
+        }
+        const { spawn } = await import('child_process');
+        const path = await import('path');
+        const fs = await import('fs');
+        const srvPath = path.resolve(process.cwd(), 'bin', process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
+        if (fs.existsSync(srvPath)) {
+          const child = spawn(srvPath, [
+            '-m', modelPath,
+            '--port', '8088',
+            '--host', '127.0.0.1',
+            '-t', String(this.config.cpuThreads)
+          ], { detached: true, stdio: 'ignore' });
+          child.unref();
+          for (let i = 0; i < 25; i++) {
+            await new Promise((r) => setTimeout(r, 200));
+            const check = await fetch('http://127.0.0.1:8088/health').catch(() => null);
+            if (check && check.ok) {
+              this.serverPort = 8088;
+              return true;
+            }
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
     return false;
   }
 
@@ -149,6 +183,23 @@ export class LocalAIEngine {
     const engineInfo = await tryTauriInvoke<{ isAvailable: boolean }>('get_llama_engine_info');
     if (engineInfo) {
       return engineInfo.isAvailable;
+    }
+
+    // Node.js fallback (for testing / CLI)
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const candidates = [
+          path.resolve(process.cwd(), 'bin', 'llama-server.exe'),
+          path.resolve(process.cwd(), 'bin', 'llama-cli.exe'),
+          path.resolve(process.cwd(), 'bin', 'llama-server'),
+          path.resolve(process.cwd(), 'bin', 'llama-cli')
+        ];
+        return candidates.some((c) => fs.existsSync(c));
+      } catch {
+        return false;
+      }
     }
 
     return false;
