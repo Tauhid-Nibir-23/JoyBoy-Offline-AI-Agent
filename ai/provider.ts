@@ -4,13 +4,34 @@ export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   createdAt: string;
+  providerId?: string;
+  metrics?: GenerationMetrics;
+}
+
+export interface GenerationMetrics {
+  providerId: string;
+  providerName: string;
+  modelName?: string;
+  totalDurationMs: number;
+  tokenCount: number;
+  tokensPerSecond?: number;
+  firstTokenLatencyMs?: number;
+}
+
+export interface StreamCallbacks {
+  onToken?: (token: string) => void;
+  onStart?: () => void;
+  onComplete?: (fullText: string, metrics?: GenerationMetrics) => void;
+  onError?: (error: Error) => void;
 }
 
 export interface GenerateOptions {
   temperature?: number;
   maxTokens?: number;
-  stopSequences?: string[];
+  topP?: number;
+  systemPrompt?: string;
   signal?: AbortSignal;
+  callbacks?: StreamCallbacks;
 }
 
 export interface AIProvider {

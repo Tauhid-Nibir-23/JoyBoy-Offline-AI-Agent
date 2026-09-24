@@ -1,20 +1,21 @@
 import React, { useEffect, useRef } from 'react';
-import { Bot, User, Sparkles } from 'lucide-react';
+import { User, Bot } from 'lucide-react';
 import { ChatMessage } from '../../../ai/provider';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
+  streamingContent?: string;
   onSuggestionClick?: (prompt: string) => void;
 }
 
-export function MessageList({ messages, isLoading, onSuggestionClick }: MessageListProps) {
+export function MessageList({ messages, isLoading, streamingContent, onSuggestionClick }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  }, [messages, isLoading, streamingContent]);
 
   if (messages.length === 0 && !isLoading) {
     return (
@@ -89,9 +90,18 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{
+      flex: 1,
+      overflowY: 'auto',
+      padding: '24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '20px'
+    }}>
       {messages.map((msg) => {
         const isUser = msg.role === 'user';
+        const isLocalAI = msg.providerId === 'llamacpp' || msg.content.includes('*Local AI');
+        const isMockAI = msg.role === 'assistant' && !isLocalAI;
 
         return (
           <div
@@ -99,8 +109,8 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
             style={{
               display: 'flex',
               gap: '14px',
+              maxWidth: '85%',
               alignSelf: isUser ? 'flex-end' : 'flex-start',
-              maxWidth: isUser ? '80%' : '88%',
               flexDirection: isUser ? 'row-reverse' : 'row'
             }}
           >
@@ -119,30 +129,52 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
               {isUser ? <User size={18} /> : <Bot size={18} color="#38bdf8" />}
             </div>
 
-            {/* Bubble */}
-            <div style={{
-              backgroundColor: isUser ? 'rgba(30, 58, 138, 0.88)' : 'rgba(18, 24, 38, 0.92)',
-              border: isUser ? '1px solid #3b82f6' : '1px solid rgba(217, 119, 6, 0.35)',
-              padding: '12px 16px',
-              borderRadius: '12px',
-              color: '#f8fafc',
-              fontSize: '14px',
-              backdropFilter: 'blur(8px)',
-              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
-            }}>
-              {isUser ? (
-                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{msg.content}</div>
-              ) : (
-                <MarkdownRenderer content={msg.content} />
+            {/* Bubble & Tag */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxWidth: '100%' }}>
+              {!isUser && (
+                <div style={{ 
+                  fontSize: '11px', 
+                  fontWeight: 600, 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '6px', 
+                  marginLeft: '4px',
+                  color: isLocalAI ? '#34d399' : '#fbbf24'
+                }}>
+                  <span style={{ 
+                    width: '6px', 
+                    height: '6px', 
+                    borderRadius: '50%', 
+                    backgroundColor: isLocalAI ? '#10b981' : '#f59e0b' 
+                  }}></span>
+                  <span>{isLocalAI ? 'Local AI · GGUF' : 'Mock AI · Offline Fallback'}</span>
+                </div>
               )}
+
+              <div style={{
+                backgroundColor: isUser ? 'rgba(30, 58, 138, 0.88)' : 'rgba(18, 24, 38, 0.92)',
+                border: isUser ? '1px solid #3b82f6' : '1px solid rgba(217, 119, 6, 0.35)',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                color: '#f8fafc',
+                fontSize: '14px',
+                backdropFilter: 'blur(8px)',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
+              }}>
+                {isUser ? (
+                  <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{msg.content}</div>
+                ) : (
+                  <MarkdownRenderer content={msg.content} />
+                )}
+              </div>
             </div>
           </div>
         );
       })}
 
-      {/* Typing/Loading State */}
+      {/* Streaming or Thinking State */}
       {isLoading && (
-        <div style={{ display: 'flex', gap: '14px', alignSelf: 'flex-start' }}>
+        <div style={{ display: 'flex', gap: '14px', alignSelf: 'flex-start', maxWidth: '85%' }}>
           <div style={{
             width: '32px',
             height: '32px',
@@ -150,22 +182,60 @@ export function MessageList({ messages, isLoading, onSuggestionClick }: MessageL
             backgroundColor: '#1e293b',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            flexShrink: 0
           }}>
             <Bot size={18} color="#38bdf8" />
           </div>
-          <div style={{
-            backgroundColor: '#0f172a',
-            border: '1px solid #1e293b',
-            padding: '12px 16px',
-            borderRadius: '12px',
-            color: '#94a3b8',
-            fontSize: '13px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}>
-            <span style={{ fontStyle: 'italic' }}>Thinking & formulating study notes...</span>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{
+              fontSize: '11px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              marginLeft: '4px',
+              color: '#38bdf8'
+            }}>
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: '#38bdf8'
+              }}></span>
+              <span>Generating response...</span>
+            </div>
+
+            <div style={{
+              backgroundColor: 'rgba(18, 24, 38, 0.92)',
+              border: '1px solid rgba(217, 119, 6, 0.35)',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              color: '#f8fafc',
+              fontSize: '14px',
+              backdropFilter: 'blur(8px)',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)'
+            }}>
+              {streamingContent ? (
+                <div>
+                  <MarkdownRenderer content={streamingContent} />
+                  <span style={{ 
+                    display: 'inline-block', 
+                    width: '7px', 
+                    height: '14px', 
+                    backgroundColor: '#d97706', 
+                    marginLeft: '4px', 
+                    verticalAlign: 'middle',
+                    animation: 'pulse 1s infinite'
+                  }}></span>
+                </div>
+              ) : (
+                <div style={{ color: '#94a3b8', fontSize: '13px', fontStyle: 'italic' }}>
+                  Thinking & formulating study notes...
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

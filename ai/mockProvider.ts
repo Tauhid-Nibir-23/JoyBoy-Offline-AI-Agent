@@ -1,4 +1,4 @@
-import { AIProvider, ChatMessage } from './provider';
+import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics } from './provider';
 
 export class MockAIProvider implements AIProvider {
   public id = 'mock';
@@ -8,15 +8,20 @@ export class MockAIProvider implements AIProvider {
     return true;
   }
 
-  public async generateResponse(history: ChatMessage[]): Promise<string> {
-    // Artificial 600ms delay to simulate local processing & loading state
-    await new Promise((resolve) => setTimeout(resolve, 600));
+  public async generateResponse(
+    history: ChatMessage[],
+    options?: GenerateOptions
+  ): Promise<string> {
+    const startTime = performance.now();
+    options?.callbacks?.onStart?.();
 
     const lastUserMsg = [...history].reverse().find((m) => m.role === 'user');
     const prompt = lastUserMsg ? lastUserMsg.content.trim().toLowerCase() : '';
 
+    let fullText = '';
+
     if (prompt.includes('operating system') || prompt.includes('os')) {
-      return `### Operating System Concepts
+      fullText = `### Operating System Concepts
 
 An **Operating System (OS)** is system software that manages computer hardware, software resources, and provides common services for computer programs.
 
@@ -42,11 +47,9 @@ int main() {
 }
 \`\`\`
 
-*Note: In Phase 2, this response will be powered directly by your local llama.cpp GGUF model!*`;
-    }
-
-    if (prompt.includes('data structure') || prompt.includes('array') || prompt.includes('list') || prompt.includes('binary search')) {
-      return `### Binary Search Algorithm
+*Offline Study AI: Running in Mock Assistant mode. When a local GGUF model is selected, responses will stream from llama.cpp.*`;
+    } else if (prompt.includes('data structure') || prompt.includes('array') || prompt.includes('list') || prompt.includes('binary search')) {
+      fullText = `### Binary Search Algorithm
 
 **Binary Search** is an efficient algorithm for finding an element in a **sorted array**. It operates on a divide-and-conquer strategy with a time complexity of **O(log n)**.
 
@@ -77,18 +80,21 @@ print(f"Element found at index: {index}")
 - **Best Case:** O(1)
 - **Average/Worst Case:** O(log n)
 - **Space Complexity:** O(1) iterative`;
-    }
+    } else if (prompt.includes('simpler') || prompt.includes('simple words') || prompt.includes('eli5')) {
+      fullText = `### In Very Simple Words:
 
-    if (prompt.includes('hello') || prompt.includes('hi') || prompt.includes('hey')) {
-      return `Hello! I am your **Offline Study Assistant**. 
+Think of a computer like a busy restaurant:
+- **The Hardware (CPU, RAM, Hard Drive):** This is the kitchen, the cooking pans, and the refrigerator.
+- **The Programs (Apps, Games, Browser):** These are the customers ordering different dishes.
+- **The Operating System:** This is the **head chef/manager**. It decides who gets the cooking pan first, makes sure one order doesn't burn down the kitchen, and keeps everything organized so the food gets delivered smoothly!`;
+    } else if (prompt.includes('hello') || prompt.includes('hi') || prompt.includes('hey')) {
+      fullText = `Hello! I am your **Offline Study Assistant**. 
 
 I am here to help you study, review notes, summarize concepts, and solve technical problems completely offline. 
 
 How can I assist your study session today?`;
-    }
-
-    // Default informative response
-    return `### Study Notes: Explanation & Review
+    } else {
+      fullText = `### Study Notes: Explanation & Review
 
 Thank you for your question: "${lastUserMsg?.content || ''}".
 
@@ -108,5 +114,48 @@ function studySession(topic) {
 \`\`\`
 
 Feel free to ask follow-up questions or request code examples, practice questions, or flashcards!`;
+    }
+
+    // Check cancellation before streaming
+    if (options?.signal?.aborted) {
+      throw new Error('Inference was cancelled by user.');
+    }
+
+    // If streaming callback is requested, stream chunks
+    if (options?.callbacks?.onToken) {
+      const words = fullText.split(' ');
+      for (let i = 0; i < words.length; i++) {
+        if (options?.signal?.aborted) {
+          throw new Error('Inference was cancelled by user.');
+        }
+        const chunk = (i === 0 ? '' : ' ') + words[i];
+        options.callbacks.onToken(chunk);
+
+        // Micro delay if signal is active or in browser environment
+        if (options?.signal || typeof window !== 'undefined') {
+          await new Promise((resolve) => setTimeout(resolve, 8));
+        }
+      }
+    } else if (typeof window !== 'undefined') {
+      // Non-streaming simulated delay in browser only
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+
+    const endTime = performance.now();
+    const totalDurationMs = Math.max(1, Math.round(endTime - startTime));
+    const tokenCount = Math.ceil(fullText.length / 3.5);
+    const tokensPerSecond = parseFloat(((tokenCount / totalDurationMs) * 1000).toFixed(1));
+
+    const metrics: GenerationMetrics = {
+      providerId: 'mock',
+      providerName: 'Mock AI',
+      modelName: 'Offline Fallback',
+      totalDurationMs,
+      tokenCount,
+      tokensPerSecond
+    };
+
+    options?.callbacks?.onComplete?.(fullText, metrics);
+    return fullText;
   }
 }

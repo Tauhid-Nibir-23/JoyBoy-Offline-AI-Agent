@@ -1,4 +1,4 @@
-import { AIProvider, ChatMessage } from './provider';
+import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics } from './provider';
 import { MockAIProvider } from './mockProvider';
 import { LlamaCppProvider } from './llamaCppProvider';
 import {
@@ -13,21 +13,29 @@ import {
   DBConversation
 } from '../database/db';
 
+export interface SendMessageOptions {
+  onToken?: (token: string, accumulated: string) => void;
+  signal?: AbortSignal;
+  temperature?: number;
+  maxTokens?: number;
+}
+
 export class ChatService {
   private customProvider: AIProvider | null = null;
   private mockProvider: MockAIProvider;
   private llamaProvider: LlamaCppProvider;
+  private lastResolvedProvider: AIProvider;
 
   constructor(provider?: AIProvider) {
     this.mockProvider = new MockAIProvider();
     this.llamaProvider = new LlamaCppProvider();
-    if (provider) {
-      this.customProvider = provider;
-    }
+    this.customProvider = provider || null;
+    this.lastResolvedProvider = this.customProvider || this.mockProvider;
   }
 
   public setProvider(provider: AIProvider): void {
     this.customProvider = provider;
+    this.lastResolvedProvider = provider;
   }
 
   public getProviderType(): 'mock' | 'llamacpp' | 'auto' {
@@ -44,30 +52,45 @@ export class ChatService {
 
   public async resolveProvider(): Promise<AIProvider> {
     if (this.customProvider) {
+      this.lastResolvedProvider = this.customProvider;
       return this.customProvider;
     }
 
     const type = this.getProviderType();
 
     if (type === 'mock') {
+      this.lastResolvedProvider = this.mockProvider;
       return this.mockProvider;
     }
 
     if (type === 'llamacpp') {
       const isReady = await this.llamaProvider.isAvailable();
       if (isReady) {
+        this.lastResolvedProvider = this.llamaProvider;
         return this.llamaProvider;
       }
       // If user selected llama.cpp but local inference is unavailable, fall back safely to Mock
+      this.lastResolvedProvider = this.mockProvider;
       return this.mockProvider;
     }
 
     // 'auto' mode: Use local llama.cpp if ready, otherwise fallback to mock
     const isReady = await this.llamaProvider.isAvailable();
     if (isReady) {
+      this.lastResolvedProvider = this.llamaProvider;
       return this.llamaProvider;
     }
+    this.lastResolvedProvider = this.mockProvider;
     return this.mockProvider;
+  }
+
+  public getActiveProviderSync(): { id: string; name: string; isLocalAI: boolean } {
+    const provider = this.lastResolvedProvider;
+    return {
+      id: provider.id,
+      name: provider.name,
+      isLocalAI: provider.id === 'llamacpp'
+    };
   }
 
   public async getProviderName(): Promise<string> {
@@ -106,7 +129,8 @@ export class ChatService {
 
   public async sendMessage(
     conversationId: string,
-    userText: string
+    userText: string,
+    options?: SendMessageOptions
   ): Promise<{ userMessage: ChatMessage; assistantMessage: ChatMessage }> {
     const trimmed = userText.trim();
     if (!trimmed) {
@@ -142,16 +166,60 @@ export class ChatService {
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
     const provider = await this.resolveProvider();
 
-    // Generate response via AI provider
-    const assistantText = await provider.generateResponse(currentMsgs);
+    let accumulatedText = '';
+    let recordedMetrics: GenerationMetrics | undefined;
+
+    const generateOptions: GenerateOptions = {
+      temperature: options?.temperature,
+      maxTokens: options?.maxTokens,
+      signal: options?.signal,
+      callbacks: {
+        onToken: (chunk: string) => {
+          accumulatedText += chunk;
+          options?.onToken?.(chunk, accumulatedText);
+        },
+        onComplete: (_text: string, metrics?: GenerationMetrics) => {
+          recordedMetrics = metrics;
+        }
+      }
+    };
+
+    let assistantText = '';
+    let wasCancelled = false;
+
+    try {
+      assistantText = await provider.generateResponse(currentMsgs, generateOptions);
+    } catch (err: any) {
+      if (err.message?.includes('cancelled') || options?.signal?.aborted) {
+        wasCancelled = true;
+        assistantText = accumulatedText
+          ? `${accumulatedText}\n\n*[Generation stopped by user]*`
+          : '*[Generation stopped by user]*';
+      } else {
+        // Clear, human-understandable error handling without cloud fallback
+        const friendlyError = err.message || 'An unexpected error occurred during local inference.';
+        assistantText = `⚠️ **Local AI Error:** ${friendlyError}`;
+      }
+    }
+
+    // Append performance footer metadata if metrics exist and generation wasn't stopped with an error
+    let finalContent = assistantText;
+    if (recordedMetrics && !wasCancelled && !assistantText.startsWith('⚠️ **Local AI Error:**')) {
+      const tag = recordedMetrics.providerId === 'llamacpp'
+        ? `*Local AI · ${recordedMetrics.modelName || 'GGUF'} · ${recordedMetrics.tokensPerSecond || 0} tok/s*`
+        : `*Mock Assistant · Offline Fallback*`;
+      finalContent = `${assistantText}\n\n${tag}`;
+    }
 
     const assistantMsgId = 'msg_a_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
     const assistantMsg: ChatMessage = {
       id: assistantMsgId,
       conversationId,
       role: 'assistant',
-      content: assistantText,
-      createdAt: new Date().toISOString()
+      content: finalContent,
+      createdAt: new Date().toISOString(),
+      providerId: provider.id,
+      metrics: recordedMetrics
     };
 
     // Save assistant message to SQLite

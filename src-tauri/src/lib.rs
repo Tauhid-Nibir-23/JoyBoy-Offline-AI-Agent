@@ -1,11 +1,14 @@
-// Offline Study AI - Rust Core Backend (Phase 2A)
+// Offline Study AI - Rust Core Backend (Phase 2B)
 
 mod hardware;
 mod inference;
 mod models;
 
 use hardware::{detect_hardware, HardwareProfile};
-use inference::{check_llama_engine, run_inference, LlamaEngineInfo};
+use inference::{
+    check_llama_engine, get_llama_server_status, run_inference, start_llama_server,
+    stop_llama_server, LlamaEngineInfo, LlamaServerStatus,
+};
 use models::{scan_directory, validate_file, DiscoveredModelFile, ModelValidationResult};
 
 #[tauri::command]
@@ -34,6 +37,26 @@ fn get_llama_engine_info() -> LlamaEngineInfo {
 }
 
 #[tauri::command]
+fn start_local_llama_server(
+    model_path: String,
+    port: Option<u16>,
+    threads: Option<u32>,
+    gpu_layers: Option<u32>,
+) -> Result<u16, String> {
+    start_llama_server(&model_path, port, threads, gpu_layers)
+}
+
+#[tauri::command]
+fn stop_local_llama_server() -> Result<(), String> {
+    stop_llama_server()
+}
+
+#[tauri::command]
+fn get_local_llama_server_status() -> LlamaServerStatus {
+    get_llama_server_status()
+}
+
+#[tauri::command]
 fn run_local_inference(
     model_path: String,
     prompt: String,
@@ -52,6 +75,9 @@ pub fn run() {
             scan_model_directory,
             validate_model_file,
             get_llama_engine_info,
+            start_local_llama_server,
+            stop_local_llama_server,
+            get_local_llama_server_status,
             run_local_inference
         ])
         .run(tauri::generate_context!())

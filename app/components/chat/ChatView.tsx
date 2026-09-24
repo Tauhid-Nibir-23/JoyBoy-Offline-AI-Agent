@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { ChatSidebar } from './ChatSidebar';
 import { MessageList } from './MessageList';
@@ -12,13 +12,25 @@ export function ChatView() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [streamingContent, setStreamingContent] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState<number>(260);
+  const [providerInfo, setProviderInfo] = useState<{ id: string; name: string; isLocalAI: boolean }>(
+    chatService.getActiveProviderSync()
+  );
 
-  // Load conversations on mount
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load conversations on mount & refresh provider info
   useEffect(() => {
     loadConversationsList();
+    updateProviderInfo();
   }, []);
+
+  const updateProviderInfo = async () => {
+    await chatService.resolveProvider();
+    setProviderInfo(chatService.getActiveProviderSync());
+  };
 
   // Keyboard shortcut Ctrl+N for new chat
   useEffect(() => {
@@ -55,12 +67,25 @@ export function ChatView() {
   };
 
   const handleSelectConversation = (id: string) => {
+    // If generating on previous conversation, cancel it
+    if (isLoading && abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+      setStreamingContent('');
+    }
     setActiveId(id);
     loadConversationMessages(id);
   };
 
   const handleNewChat = () => {
     try {
+      if (isLoading && abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+        setIsLoading(false);
+        setStreamingContent('');
+      }
       const newConv = chatService.createConversation('New Chat');
       const updated = chatService.getConversations();
       setConversations(updated);
@@ -100,6 +125,13 @@ export function ChatView() {
     }
   };
 
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
   const handleSendMessage = async (text: string) => {
     let targetConvId = activeId;
 
@@ -121,18 +153,34 @@ export function ChatView() {
       };
       setMessages((prev) => [...prev, tempUserMsg]);
       setIsLoading(true);
+      setStreamingContent('');
       setErrorMsg(null);
 
-      // Call service to process & generate response
-      await chatService.sendMessage(targetConvId, text);
+      // Create new abort controller for this generation
+      abortControllerRef.current = new AbortController();
+
+      // Refresh provider info
+      await updateProviderInfo();
+
+      // Call service to process & generate response with token streaming
+      await chatService.sendMessage(targetConvId, text, {
+        signal: abortControllerRef.current.signal,
+        onToken: (_token, accumulated) => {
+          setStreamingContent(accumulated);
+        }
+      });
 
       // Refresh state from database
       setConversations(chatService.getConversations());
       setMessages(chatService.getMessages(targetConvId));
     } catch (err: any) {
-      setErrorMsg('Failed to send message: ' + err.message);
+      if (!err.message?.includes('cancelled')) {
+        setErrorMsg('Inference Notice: ' + err.message);
+      }
     } finally {
       setIsLoading(false);
+      setStreamingContent('');
+      abortControllerRef.current = null;
     }
   };
 
@@ -204,9 +252,18 @@ export function ChatView() {
             <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
               {activeConv ? activeConv.title : 'New Chat'}
             </h2>
-            <span style={{ fontSize: '11px', color: '#d97706' }}>
-              Active AI Provider: {chatService.getProviderName()}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', fontSize: '11px' }}>
+              <span style={{ color: '#94a3b8' }}>Provider:</span>
+              <span style={{ 
+                color: providerInfo.isLocalAI ? '#34d399' : '#f59e0b',
+                fontWeight: 600 
+              }}>
+                {providerInfo.name}
+              </span>
+              <span style={{ color: '#64748b' }}>
+                ({providerInfo.isLocalAI ? 'Private GGUF' : 'Offline Fallback'})
+              </span>
+            </div>
           </div>
         </div>
 
@@ -214,13 +271,17 @@ export function ChatView() {
         <MessageList 
           messages={messages} 
           isLoading={isLoading} 
+          streamingContent={streamingContent}
           onSuggestionClick={(prompt) => handleSendMessage(prompt)} 
         />
 
         {/* Bottom Composer */}
-        <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
+        <MessageComposer 
+          onSend={handleSendMessage} 
+          onStop={handleStopGeneration}
+          disabled={isLoading} 
+        />
       </div>
     </div>
   );
 }
-

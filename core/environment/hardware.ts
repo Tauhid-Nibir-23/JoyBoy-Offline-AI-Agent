@@ -64,7 +64,7 @@ export async function detectHardware(): Promise<HardwareProfile> {
   }
 
   // 2. Fall back to platform-specific adapters for browser/Node test environments
-  const isWindows = typeof process !== 'undefined' 
+  const isWindows = typeof process !== 'undefined'
     ? process.platform === 'win32'
     : typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 

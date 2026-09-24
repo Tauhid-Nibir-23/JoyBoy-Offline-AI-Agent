@@ -53,7 +53,7 @@ describe('Phase 2A AI Provider Selection & Fallback Tests', () => {
           createdAt: new Date().toISOString()
         }
       ])
-    ).rejects.toThrow(/Local AI Engine is unavailable/);
+    ).rejects.toThrow(/The local model could not be loaded/);
   });
 
   it('ChatService defaults to MockAIProvider when local model is not installed', async () => {
