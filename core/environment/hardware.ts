@@ -1,22 +1,7 @@
+export * from './types';
+import { HardwareProfile } from './types';
 import { windowsHardwareAdapter } from './windows';
 import { linuxHardwareAdapter } from './linux';
-
-export interface HardwareProfile {
-  os: string;
-  architecture: string;
-  cpu: string;
-  logicalCores: number;
-  physicalCores: number | null;
-  totalRamBytes: number;
-  availableRamBytes: number | null;
-  gpu: string;
-  gpuVendor: string | null;
-  vramBytes: number | null;
-}
-
-export interface HardwareAdapter {
-  detect(): Promise<HardwareProfile>;
-}
 
 // Safely attempt Tauri invoke if available
 async function tryTauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {

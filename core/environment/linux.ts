@@ -1,4 +1,4 @@
-import { HardwareProfile, HardwareAdapter } from './hardware';
+import { HardwareProfile, HardwareAdapter } from './types';
 
 export class LinuxHardwareAdapter implements HardwareAdapter {
   public async detect(): Promise<HardwareProfile> {
