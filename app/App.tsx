@@ -51,7 +51,11 @@ export default function App() {
       {/* Sidebar Navigation */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="logo-badge">JB</div>
+          <img 
+            src="/assets/joyboy_logo.png" 
+            alt="JoyBoy" 
+            className="logo-badge-img" 
+          />
           <div>
             <div style={{ fontWeight: 700, fontSize: '16px', color: '#ffedd5', letterSpacing: '0.3px' }}>JoyBoy</div>
             <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 500 }}>v0.1.0 · Offline AI</div>

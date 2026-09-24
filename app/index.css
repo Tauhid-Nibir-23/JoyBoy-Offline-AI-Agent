@@ -94,6 +94,21 @@ body {
   box-shadow: 0 2px 8px rgba(217, 119, 6, 0.35);
 }
 
+.logo-badge-img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 8px rgba(217, 119, 6, 0.5));
+  transition: transform 0.2s ease, filter 0.2s ease;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.logo-badge-img:hover {
+  transform: scale(1.08);
+  filter: drop-shadow(0 3px 12px rgba(245, 158, 11, 0.7));
+}
+
 .nav-menu {
   padding: 14px 10px;
   flex: 1;

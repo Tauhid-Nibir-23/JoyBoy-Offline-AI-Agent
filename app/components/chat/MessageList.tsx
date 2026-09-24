@@ -28,38 +28,81 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
         padding: '32px',
         userSelect: 'none'
       }}>
-        {/* Golden Compass & JoyBoy Title */}
+        {/* JoyBoy Crest & Title Hero */}
         <div style={{ 
           display: 'flex', 
+          flexDirection: 'column',
           alignItems: 'center', 
-          gap: '12px', 
-          marginBottom: '24px',
-          background: 'rgba(18, 10, 6, 0.65)',
-          padding: '10px 24px',
-          borderRadius: '30px',
-          border: '1px solid rgba(245, 158, 11, 0.4)',
-          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.7), 0 0 16px rgba(245, 158, 11, 0.25)',
-          backdropFilter: 'blur(6px)'
+          gap: '14px', 
+          marginBottom: '26px'
         }}>
-          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" style={{ filter: 'drop-shadow(0 0 6px rgba(245, 158, 11, 0.8))' }}>
-            <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="2 2" fill="rgba(43, 24, 16, 0.7)" />
-            <circle cx="12" cy="12" r="7.5" stroke="#d97706" strokeWidth="1" />
-            <polygon points="12,2 14,10 12,12 10,10" fill="#fbbf24" />
-            <polygon points="12,22 14,14 12,12 10,14" fill="#92400e" />
-            <polygon points="2,12 10,10 12,12 10,14" fill="#92400e" />
-            <polygon points="22,12 14,10 12,12 14,14" fill="#fbbf24" />
-            <circle cx="12" cy="12" r="2.5" fill="#fef3c7" stroke="#78350f" strokeWidth="1" />
-          </svg>
-          <span style={{ 
-            fontSize: '24px', 
-            fontWeight: 800, 
-            color: '#fef3c7', 
-            textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 0 14px rgba(245, 158, 11, 0.6)',
-            letterSpacing: '0.8px',
-            fontFamily: 'serif, Georgia, sans-serif'
+          <div style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}>
-            JoyBoy AI
-          </span>
+            {/* Ambient golden aura behind the crest */}
+            <div style={{
+              position: 'absolute',
+              width: '140px',
+              height: '140px',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(245, 158, 11, 0.4) 0%, rgba(180, 83, 9, 0.15) 50%, transparent 75%)',
+              filter: 'blur(12px)',
+              pointerEvents: 'none'
+            }} />
+            <img 
+              src="/assets/joyboy_logo.png" 
+              alt="JoyBoy Offline AI Agent" 
+              style={{
+                width: '130px',
+                height: '130px',
+                objectFit: 'contain',
+                position: 'relative',
+                filter: 'drop-shadow(0 8px 24px rgba(0, 0, 0, 0.9)) drop-shadow(0 0 16px rgba(245, 158, 11, 0.4))',
+                transition: 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                cursor: 'pointer'
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.06) rotate(1deg)')}
+              onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1) rotate(0deg)')}
+            />
+          </div>
+
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '10px', 
+            background: 'rgba(18, 10, 6, 0.75)',
+            padding: '8px 22px',
+            borderRadius: '24px',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            boxShadow: '0 4px 18px rgba(0, 0, 0, 0.7), 0 0 12px rgba(245, 158, 11, 0.2)',
+            backdropFilter: 'blur(8px)'
+          }}>
+            <span style={{ 
+              fontSize: '20px', 
+              fontWeight: 800, 
+              color: '#fef3c7', 
+              textShadow: '0 2px 8px rgba(0, 0, 0, 0.9), 0 0 14px rgba(245, 158, 11, 0.6)',
+              letterSpacing: '0.8px',
+              fontFamily: 'serif, Georgia, sans-serif'
+            }}>
+              JoyBoy AI
+            </span>
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              color: '#fbbf24',
+              letterSpacing: '0.6px',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              background: 'rgba(217, 119, 6, 0.25)',
+              border: '1px solid rgba(245, 158, 11, 0.4)'
+            }}>
+              OFFLINE AGENT
+            </span>
+          </div>
         </div>
 
         {/* 4 Wooden Plaque Suggestion Planks */}
@@ -119,14 +162,25 @@ export function MessageList({ messages, isLoading, streamingContent, onSuggestio
               width: '32px',
               height: '32px',
               borderRadius: '8px',
-              backgroundColor: isUser ? '#2563eb' : '#1e293b',
+              backgroundColor: isUser ? '#2563eb' : 'rgba(28, 16, 10, 0.85)',
+              border: isUser ? 'none' : '1px solid rgba(245, 158, 11, 0.4)',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              flexShrink: 0
+              flexShrink: 0,
+              boxShadow: '0 2px 6px rgba(0, 0, 0, 0.4)',
+              overflow: 'hidden'
             }}>
-              {isUser ? <User size={18} /> : <Bot size={18} color="#38bdf8" />}
+              {isUser ? (
+                <User size={18} />
+              ) : (
+                <img 
+                  src="/assets/joyboy_logo.png" 
+                  alt="JoyBoy" 
+                  style={{ width: '26px', height: '26px', objectFit: 'contain' }} 
+                />
+              )}
             </div>
 
             {/* Bubble & Tag */}
