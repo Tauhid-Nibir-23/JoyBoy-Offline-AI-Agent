@@ -25,7 +25,7 @@ export class TesseractCliOCRProvider implements OCRProvider {
       return true;
     }
 
-    // 2. Node.js / Electron / Tauri filesystem probe
+    // 2. Node.js / Electron / Tauri filesystem probe & runtime PATH detection
     if (typeof process !== 'undefined' && process.versions && process.versions.node) {
       try {
         const fs = await import('fs');
@@ -49,6 +49,22 @@ export class TesseractCliOCRProvider implements OCRProvider {
             return true;
           }
         }
+
+        // Try runtime PATH detection: 'where tesseract' on Windows, 'which tesseract' on Linux
+        const child_process = await import('child_process');
+        const checkCmd = process.platform === 'win32' ? 'where tesseract' : 'which tesseract';
+        try {
+          const out = child_process.execSync(checkCmd, { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+          const firstLine = out.split('\n')[0].trim();
+          if (firstLine && fs.existsSync(firstLine)) {
+            this.isDetected = true;
+            this.cachedPath = firstLine;
+            this.hasChecked = true;
+            return true;
+          }
+        } catch {
+          // Command not found in PATH
+        }
       } catch {
         // Continue
       }
@@ -58,6 +74,12 @@ export class TesseractCliOCRProvider implements OCRProvider {
     this.cachedPath = null;
     this.hasChecked = true;
     return false;
+  }
+
+  public getUnavailableNotice(isBangla: boolean = false): string {
+    return isBangla
+      ? 'এই PDF টি scanned/image-based। OCR engine পাওয়া যায়নি, তাই এর ভেতরের লেখা পুরোপুরি পড়তে পারছি না।'
+      : 'This PDF appears to be scanned or image-based. OCR engine is required for complete text recognition.';
   }
 
   public async getEngineInfo(): Promise<OCREngineInfo> {

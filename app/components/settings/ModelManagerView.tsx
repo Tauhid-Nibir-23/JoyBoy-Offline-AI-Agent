@@ -21,6 +21,7 @@ import { ModelProfile } from '../../../models/types';
 import { chatService } from '../../../ai/chatService';
 import { localAIEngine } from '../../../ai/localEngine';
 import { globalStatus } from '../../../core/status';
+import { modelBenchmarkService, ModelBenchmarkResult } from '../../../models/benchmark';
 
 export function ModelManagerView() {
   const [hardware, setHardware] = useState<HardwareProfile | null>(null);
@@ -32,6 +33,8 @@ export function ModelManagerView() {
   const [activeModel, setActiveModel] = useState<ModelProfile | null>(null);
   const [engineStatus, setEngineStatus] = useState(localAIEngine.getStatus());
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [benchmarking, setBenchmarking] = useState(false);
+  const [benchmarkResult, setBenchmarkResult] = useState<ModelBenchmarkResult | null>(null);
 
   const [providerType, setProviderType] = useState<'auto' | 'mock' | 'llamacpp'>('auto');
   const [activeProviderName, setActiveProviderName] = useState<string>('Mock Study Assistant');
@@ -119,6 +122,9 @@ export function ModelManagerView() {
       setModels(updated);
       const active = modelManager.getActiveModel();
       setActiveModel(active);
+      if (active) {
+        setBenchmarkResult(modelBenchmarkService.getBenchmarkForModel(active.id));
+      }
       const status = localAIEngine.getStatus();
       setEngineStatus(status);
       const pName = await chatService.getProviderName();
@@ -130,6 +136,27 @@ export function ModelManagerView() {
         type: 'error', 
         text: 'Failed to select model: File not found or failed GGUF header validation.' 
       });
+    }
+  };
+
+  const handleRunBenchmark = async () => {
+    if (!activeModel) return;
+    setBenchmarking(true);
+    setFeedbackMsg(null);
+    try {
+      const provider = await chatService.resolveProvider();
+      const result = await modelBenchmarkService.runBenchmark(provider, activeModel.id, activeModel.name);
+      setBenchmarkResult(result);
+      setFeedbackMsg({
+        type: result.status === 'passed' ? 'success' : 'error',
+        text: result.status === 'passed'
+          ? `Benchmark complete: ${result.generationTokSec} tok/s · Latency: ${result.firstTokenLatencyMs} ms`
+          : `Benchmark error: ${result.error}`
+      });
+    } catch (err: any) {
+      setFeedbackMsg({ type: 'error', text: `Benchmark failed: ${err.message}` });
+    } finally {
+      setBenchmarking(false);
     }
   };
 
@@ -309,53 +336,80 @@ export function ModelManagerView() {
               <span>{engineStatus.isServerRunning ? `Server Running (Port ${engineStatus.serverPort || 8088})` : 'Not Loaded in Memory'}</span>
             </div>
 
-            {/* Load / Unload Buttons */}
-            {activeModel?.path && (
-              engineStatus.isServerRunning ? (
+            {/* Load / Unload / Benchmark Buttons */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              {activeModel && (
                 <button
-                  onClick={handleUnloadModel}
-                  disabled={isActionLoading}
+                  onClick={handleRunBenchmark}
+                  disabled={benchmarking || isActionLoading}
                   className="btn"
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                    border: '1px solid #ef4444',
-                    color: '#fca5a5',
+                    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid #38bdf8',
+                    color: '#38bdf8',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '6px 14px',
+                    padding: '6px 12px',
                     borderRadius: '8px',
                     fontSize: '12px',
                     fontWeight: 600
                   }}
+                  title="Run local benchmark to measure generation speed and latency"
                 >
-                  <Power size={14} />
-                  <span>Unload Model</span>
+                  <Gauge size={14} className={benchmarking ? 'animate-spin' : ''} />
+                  <span>{benchmarking ? 'Benchmarking...' : 'Benchmark'}</span>
                 </button>
-              ) : (
-                <button
-                  onClick={() => handleLoadModel()}
-                  disabled={isActionLoading || activeModel.status === 'Not Installed'}
-                  className="btn btn-primary"
-                  style={{
-                    backgroundColor: '#16a34a',
-                    color: '#fff',
-                    cursor: activeModel.status !== 'Not Installed' ? 'pointer' : 'not-allowed',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '6px 14px',
-                    borderRadius: '8px',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }}
-                >
-                  <Zap size={14} />
-                  <span>Load Model</span>
-                </button>
-              )
-            )}
+              )}
+
+              {activeModel?.path && (
+                engineStatus.isServerRunning ? (
+                  <button
+                    onClick={handleUnloadModel}
+                    disabled={isActionLoading}
+                    className="btn"
+                    style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                      border: '1px solid #ef4444',
+                      color: '#fca5a5',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Power size={14} />
+                    <span>Unload Model</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleLoadModel()}
+                    disabled={isActionLoading || activeModel.status === 'Not Installed'}
+                    className="btn btn-primary"
+                    style={{
+                      backgroundColor: '#16a34a',
+                      color: '#fff',
+                      cursor: activeModel.status !== 'Not Installed' ? 'pointer' : 'not-allowed',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 14px',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      fontWeight: 600
+                    }}
+                  >
+                    <Zap size={14} />
+                    <span>Load Model</span>
+                  </button>
+                )
+              )}
+            </div>
           </div>
         </div>
 
@@ -392,9 +446,17 @@ export function ModelManagerView() {
             </strong>
           </div>
           <div>
-            <span style={{ color: '#94a3b8' }}>Approx Speed: </span>
-            <strong style={{ color: speedTokSec ? '#38bdf8' : '#cbd5e1' }}>
-              {speedTokSec ? `${speedTokSec} tok/s` : '— (Benchmark on chat)'}
+            <span style={{ color: '#94a3b8' }}>Speed: </span>
+            <strong style={{ color: (benchmarkResult?.generationTokSec || speedTokSec) ? '#38bdf8' : '#cbd5e1' }}>
+              {benchmarkResult?.generationTokSec 
+                ? `${benchmarkResult.generationTokSec} tok/s (Benchmarked)` 
+                : speedTokSec ? `${speedTokSec} tok/s` : '— (Benchmark on chat)'}
+            </strong>
+          </div>
+          <div>
+            <span style={{ color: '#94a3b8' }}>Latency: </span>
+            <strong style={{ color: benchmarkResult?.firstTokenLatencyMs ? '#6ee7b7' : '#94a3b8' }}>
+              {benchmarkResult?.firstTokenLatencyMs ? `${benchmarkResult.firstTokenLatencyMs} ms` : '—'}
             </strong>
           </div>
           <div>
@@ -411,6 +473,48 @@ export function ModelManagerView() {
             <code style={{ color: activeModel?.path ? '#6ee7b7' : '#64748b', fontSize: '12px' }}>
               {activeModel?.path || 'None'}
             </code>
+          </div>
+        </div>
+      </div>
+
+      {/* Model Guidance & Target Profiles (Phase 10 Section 2 & 15) */}
+      <div className="card" style={{ padding: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+          <Sparkles size={18} style={{ color: '#fbbf24' }} />
+          <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
+            Model Guidance & Hardware Recommendations
+          </h3>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
+          {/* Qwen 2.5 3B Box */}
+          <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', padding: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <strong style={{ color: '#fbbf24', fontSize: '14px' }}>Qwen 2.5 3B Instruct</strong>
+              <span style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', fontWeight: 600 }}>RECOMMENDED TARGET</span>
+            </div>
+            <ul style={{ fontSize: '12.5px', color: '#cbd5e1', paddingLeft: '18px', margin: 0, lineHeight: 1.6 }}>
+              <li><strong>Recommended for this PC:</strong> Optimal balance for 8th+ Gen Intel / AMD with ~14–16 GB RAM.</li>
+              <li><strong>Better reasoning:</strong> Handles multi-step problem solving and study questions reliably.</li>
+              <li><strong>Better conversation context:</strong> Understands pronouns, follow-ups, and active subtopics.</li>
+              <li><strong>Better Bengali/Banglish:</strong> Produces natural Bengali script with English technical terms.</li>
+              <li><strong>Resource profile:</strong> Higher RAM footprint (~2.5 GB) than 0.5B; optimal when system RAM is available.</li>
+            </ul>
+          </div>
+
+          {/* Qwen 2.5 0.5B Box */}
+          <div style={{ backgroundColor: '#090d16', border: '1px solid rgba(56, 189, 248, 0.3)', borderRadius: '8px', padding: '14px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <strong style={{ color: '#38bdf8', fontSize: '14px' }}>Qwen 2.5 0.5B Instruct</strong>
+              <span style={{ fontSize: '10.5px', padding: '2px 8px', borderRadius: '4px', backgroundColor: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 600 }}>LIGHTWEIGHT FALLBACK</span>
+            </div>
+            <ul style={{ fontSize: '12.5px', color: '#cbd5e1', paddingLeft: '18px', margin: 0, lineHeight: 1.6 }}>
+              <li><strong>Lightweight:</strong> Extremely low storage requirement (~491 MB GGUF).</li>
+              <li><strong>Faster:</strong> Rapid token generation even on lower-power or battery states.</li>
+              <li><strong>Lower memory usage:</strong> Fits easily in &lt; 1 GB RAM without system slowdown.</li>
+              <li><strong>Reasoning trade-off:</strong> Lower context capacity for complex follow-up logic.</li>
+              <li><strong>Fallback model:</strong> Guaranteed offline availability when 3B is uninstalled.</li>
+            </ul>
           </div>
         </div>
       </div>

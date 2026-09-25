@@ -1,8 +1,25 @@
-// Offline Study AI - Smart Query Rewriter (Phase 9)
+// Offline Study AI - Smart Query Rewriter & Intent Resolver (Phase 9 & 10)
 import { conversationMemory, ConversationMemoryState } from './conversationMemory';
 import { ChatMessage } from './provider';
 
 export type QueryIntent = 
+  | 'EXPLAIN'
+  | 'SIMPLIFY'
+  | 'EXAMPLE'
+  | 'SUMMARIZE'
+  | 'SHORTEN'
+  | 'EXPAND'
+  | 'COMPARE'
+  | 'TRANSLATE'
+  | 'MCQ'
+  | 'QUIZ'
+  | 'FLASHCARD'
+  | 'NOTE'
+  | 'QUESTION_GENERATION'
+  | 'CONTINUE'
+  | 'CLARIFY'
+  | 'DOCUMENT_LOOKUP'
+  // Phase 9 backward-compatibility intents:
   | 'example'
   | 'clarify_simple'
   | 'generate_mcq'
@@ -22,18 +39,24 @@ export interface RewrittenQueryResult {
   intent: QueryIntent;
   targetAction?: string;
   referencedTopic?: string | null;
+  resolvedContext?: string;
   targetPage?: number | null;
   targetQuestionNumber?: number | null;
+  targetItemNumber?: number | null;
+  targetItemTitle?: string | null;
+  extractedQuantity?: number | null;
+  chapterRef?: string | null;
 }
 
 export class QueryRewriter {
   /**
    * Evaluates the user query against the conversation's active memory and history.
-   * If the query is anaphoric or a follow-up ("eta", "oita", "example daw", "make it easier",
-   * "question 5 explain koro", "ager answer ta short koro"), resolves it into a complete,
-   * context-aware internal retrieval query.
+   * If the query is anaphoric or a follow-up ("eta", "oita", "example daw", "2 number ta easy kore bujhao",
+   * "short koro", "5 ta MCQ banaw"), resolves it into a complete, context-aware internal retrieval query.
    * 
-   * CRITICAL: The rewritten query is internal only and used for RAG/context construction.
+   * RULE (Phase 10 Section 3 & 6):
+   * IF query is self-contained ("What is OS?", "What is deadlock?"): PRESERVE ORIGINAL QUERY.
+   * Do NOT bloated-rewrite self-contained questions.
    */
   public rewriteQuery(
     firstArg: string,
@@ -58,16 +81,40 @@ export class QueryRewriter {
       memory = conversationMemory.getMemory(conversationId);
     }
 
+    const trimmed = rawQuery.trim();
+    if (!trimmed) {
+      return {
+        originalQuery: rawQuery,
+        resolvedQuery: rawQuery,
+        rewrittenQuery: rawQuery,
+        wasRewritten: false,
+        isRewritten: false,
+        intent: 'standalone',
+        targetAction: 'standalone',
+        referencedTopic: memory.activeTopic
+      };
+    }
+
+    const lower = trimmed.toLowerCase();
+
     const mapResult = (
       resolvedQuery: string,
       wasRewritten: boolean,
       intent: QueryIntent,
       extra?: Partial<RewrittenQueryResult>
     ): RewrittenQueryResult => {
-      let targetAction: string = intent;
-      if (intent === 'clarify_simple') targetAction = 'simplify';
-      else if (intent === 'generate_mcq') targetAction = 'mcq';
-      else if (intent === 'shorten_answer') targetAction = 'shorten';
+      let targetAction: string = intent.toLowerCase();
+      if (intent === 'clarify_simple' || intent === 'SIMPLIFY') targetAction = 'simplify';
+      else if (intent === 'generate_mcq' || intent === 'MCQ') targetAction = 'mcq';
+      else if (intent === 'shorten_answer' || intent === 'SHORTEN') targetAction = 'shorten';
+      else if (intent === 'example' || intent === 'EXAMPLE') targetAction = 'example';
+      else if (intent === 'exam_topics' || intent === 'NOTE') targetAction = 'exam_topics';
+      else if (intent === 'EXPLAIN') targetAction = 'explain';
+
+      const topic = extra?.referencedTopic !== undefined ? extra.referencedTopic : (memory.activeSubtopic || memory.activeTopic);
+      const resolvedContext = wasRewritten 
+        ? `The user is following up on ${topic || 'the active study topic'}. Intent: ${targetAction.toUpperCase()}`
+        : undefined;
 
       return {
         originalQuery: rawQuery,
@@ -77,27 +124,96 @@ export class QueryRewriter {
         isRewritten: wasRewritten,
         intent,
         targetAction,
-        referencedTopic: memory.activeTopic,
+        referencedTopic: topic,
+        resolvedContext,
         ...extra
       };
     };
 
-    const trimmed = rawQuery.trim();
-    if (!trimmed) {
-      return mapResult(rawQuery, false, 'standalone');
+    const bengaliNumerals: Record<string, number> = {
+      '১': 1, '২': 2, '৩': 3, '৪': 4, '৫': 5,
+      '৬': 6, '৭': 7, '৮': 8, '৯': 9, '১০': 10
+    };
+
+    // 1. Ordinal Item Reference (e.g. "2 number ta", "2 number ta easy kore bujhao", "ager answer er 3 number ta", "২ নম্বরটা", "second one")
+    const ordinalMatch = lower.match(/(?:ager\s+answer(?:er)?\s+)?([0-9১-৯]+)\s*(?:no|nombor|number|nong|নম্বর)?\s*(?:ta|ti|টা|টি)?/i) ||
+      lower.match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)\s*(?:one|item|condition|topic)?\b/i);
+
+    const ordinalWords: Record<string, number> = {
+      'first': 1, '1st': 1,
+      'second': 2, '2nd': 2,
+      'third': 3, '3rd': 3,
+      'fourth': 4, '4th': 4,
+      'fifth': 5, '5th': 5
+    };
+
+    // Check if query is specifically targeting an enumerated item from previous answer
+    const hasOrdinalMention = 
+      /\b([0-9১-৯]+)\s*(?:no|nombor|number|nong|নম্বর)?\s*(?:ta|ti|টা|টি)\b/i.test(lower) ||
+      /\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th)\b/i.test(lower) ||
+      /(?:২|৩|৪|৫)\s*নম্বর/.test(trimmed) ||
+      lower.includes('2 number') || lower.includes('3 number') || lower.includes('4 number');
+
+    if (hasOrdinalMention && !lower.startsWith('what is') && !lower.startsWith('explain ')) {
+      let itemNum = 0;
+      if (ordinalMatch) {
+        const rawToken = ordinalMatch[1];
+        if (bengaliNumerals[rawToken]) {
+          itemNum = bengaliNumerals[rawToken];
+        } else if (ordinalWords[rawToken]) {
+          itemNum = ordinalWords[rawToken];
+        } else {
+          itemNum = parseInt(rawToken, 10);
+        }
+      }
+
+      if (itemNum > 0) {
+        const referencedItem = conversationMemory.resolveReferencedItem(conversationId, itemNum);
+        const itemTitle = referencedItem?.title || `Item ${itemNum}`;
+        const topicContext = memory.activeTopic ? ` (${memory.activeTopic})` : '';
+
+        // Update active subtopic in memory
+        memory.activeSubtopic = referencedItem?.title || itemTitle;
+
+        if (/\b(easy|shohoj|simple|bujhao|সহজ)\b/i.test(lower)) {
+          return mapResult(
+            `Explain ${itemTitle}${topicContext} in simple terms with everyday analogies`,
+            true,
+            'SIMPLIFY',
+            { targetItemNumber: itemNum, targetItemTitle: itemTitle, referencedTopic: itemTitle }
+          );
+        }
+        if (/\b(example|udahar|দৃষ্টান্ত|উদাহরণ)\b/i.test(lower)) {
+          return mapResult(
+            `Concrete real-world example and practical scenario explaining ${itemTitle}${topicContext}`,
+            true,
+            'EXAMPLE',
+            { targetItemNumber: itemNum, targetItemTitle: itemTitle, referencedTopic: itemTitle }
+          );
+        }
+        if (/\b(mcq|quiz)\b/i.test(lower)) {
+          return mapResult(
+            `Generate practice multiple choice questions (MCQs) testing ${itemTitle}${topicContext}`,
+            true,
+            'MCQ',
+            { targetItemNumber: itemNum, targetItemTitle: itemTitle, referencedTopic: itemTitle }
+          );
+        }
+
+        return mapResult(
+          `Detailed explanation of ${itemTitle}${topicContext}`,
+          true,
+          'EXPLAIN',
+          { targetItemNumber: itemNum, targetItemTitle: itemTitle, referencedTopic: itemTitle }
+        );
+      }
     }
 
-    const lower = trimmed.toLowerCase();
-
-    // 1. Detect Question Number reference: e.g. "question 5 explain koro", "question 5 ta explain koro", "৫ নম্বর প্রশ্নটা বুঝিয়ে বলো"
+    // 2. Question Number Reference: e.g. "question 5 explain koro", "৫ নম্বর প্রশ্নটা বুঝিয়ে বলো"
     const qNumMatch = lower.match(/(?:question|prosno|প্রশ্ন|ques|q)\s*([0-9১-৯]+)/i) ||
       trimmed.match(/([0-9১-৯]+)\s*(?:no|nombor|number|nong|নম্বর)\s*(?:prosno|question|প্রশ্ন)/i);
 
     if (qNumMatch) {
-      const bengaliNumerals: Record<string, number> = {
-        '১': 1, '২': 2, '৩': 3, '৪': 4, '৫': 5,
-        '৬': 6, '৭': 7, '৮': 8, '৯': 9, '১০': 10
-      };
       let qNum = parseInt(qNumMatch[1], 10);
       if (isNaN(qNum) && bengaliNumerals[qNumMatch[1]]) {
         qNum = bengaliNumerals[qNumMatch[1]];
@@ -116,7 +232,7 @@ export class QueryRewriter {
       }
     }
 
-    // 2. Detect Page number reference: e.g. "Page 12 e ki bola hoise?", "page 12 ta bujhao", "page 5"
+    // 3. Page Number Reference: e.g. "Page 12 e ki bola hoise?", "ei PDF er 10 page ta bujhao", "page 5"
     const pageMatch = lower.match(/\bpage\s*([0-9]+)\b/i) || trimmed.match(/পৃষ্ঠা\s*([০-৯0-9]+)/i);
     if (pageMatch) {
       const pageNum = parseInt(pageMatch[1], 10);
@@ -128,78 +244,124 @@ export class QueryRewriter {
       }
     }
 
-    // 3. Detect Shorten / Summarize previous answer: e.g. "ager answer ta short koro", "shorten it", "summarize previous answer"
+    // 4. Shorten / Summarize previous answer: e.g. "short koro", "ager answer ta short koro", "shorten it"
     const isShorten = 
       /\b(ager\s+answer|ager\s+uttor|previous\s+answer|short\s+koro|choto\s+koro|chuto\s+koro|shorten|summarize\s+it)\b/i.test(lower) ||
-      /(?:আগের\s*উত্তর|সংক্ষেপ\s*করো|ছোট\s*করো)/.test(trimmed);
+      /(?:আগের\s*উত্তর|সংক্ষেপ\s*করো|ছোট\s*করো)/.test(trimmed) ||
+      lower === 'short koro' || lower === 'shorten';
 
     if (isShorten) {
-      const topic = memory.activeTopic || 'the previously discussed topic';
+      const topic = memory.activeSubtopic || memory.activeTopic || 'the previously discussed topic';
       return mapResult(`Concise summary and key points of the previous explanation on ${topic}`, true, 'shorten_answer');
     }
 
-    // 4. Detect Exam questions / Important topics: e.g. "kon gula exam e aste pare?", "important topics", "exam questions"
-    const isExamTopics =
-      /\b(exam\s*e|porikkha|exam\s+questions|important\s+topics|kon\s+gula\s+exam)\b/i.test(lower) ||
-      /(?:পরীক্ষায়|পরীক্ষায়|গুরুত্বপূর্ণ\s*টপিক)/.test(trimmed);
-
-    if (isExamTopics) {
-      const docName = memory.recentDocReferences[0] || memory.attachedDocuments?.[0];
-      const topic = docName ? `the attached study material ${docName}` : (memory.activeTopic || 'Operating Systems');
-      return mapResult(`High yield exam questions, core concepts, and important exam topics for ${topic}`, true, 'exam_topics');
-    }
-
-    // 5. Detect MCQ / Quiz request with pronoun/referent: e.g. "eta theke 10 ta MCQ dao", "MCQ banaw", "ei chapter theke MCQ", "quiz me"
+    // 5. MCQ / Quiz request: e.g. "MCQ banaw", "5 ta MCQ banaw", "MCQ banaw 5 ta", "quiz me"
     const isMCQ = 
       /\b(mcq|quiz|multiple\s+choice|prosno\s+banaw|prosno\s+dao)\b/i.test(lower) ||
       /(?:কুইজ|এমসিকিউ|প্রশ্ন\s*বানাও|প্রশ্ন\s*দাও)/.test(trimmed);
 
     if (isMCQ) {
-      const topic = memory.recentChapterRef || memory.activeTopic || (memory.recentDocReferences[0] ? `the study material ${memory.recentDocReferences[0]}` : 'core study concepts');
-      const countMatch = lower.match(/([0-9]+)\s*ta\s*mcq/i) || trimmed.match(/([০-৯0-9]+)\s*টি/);
-      const count = countMatch ? countMatch[1] : '5';
-      return mapResult(`Generate ${count} practice multiple choice questions (MCQs) testing core concepts of ${topic}`, true, 'generate_mcq');
+      const countMatch = lower.match(/([0-9]+)\s*ta\s*mcq/i) || 
+        lower.match(/mcq\s*banaw\s*([0-9]+)\s*ta/i) ||
+        lower.match(/([0-9]+)\s*ta/i) ||
+        trimmed.match(/([০-৯0-9]+)\s*টি/);
+      let count = 5;
+      if (countMatch) {
+        const parsed = parseInt(countMatch[1], 10);
+        if (!isNaN(parsed) && parsed > 0) count = parsed;
+      }
+
+      const target = memory.activeSubtopic || memory.recentChapterRef || memory.activeTopic || (memory.recentDocReferences[0] ? `the study material ${memory.recentDocReferences[0]}` : 'core study concepts');
+      return mapResult(`Generate ${count} practice multiple choice questions (MCQs) testing core concepts of ${target}`, true, 'generate_mcq', {
+        extractedQuantity: count
+      });
     }
 
-    // 6. Detect Simplification / "Make it easier" / "eta easy kore bujhao" / "aro easy kore bolo"
+    // 6. Simplification: e.g. "eta easy kore bujhao", "easy kore bolo", "aro easy kore bolo"
     const isSimpler = 
       /\b(easy\s+kore|shohoj\s+kore|aro\s+easy|make\s+it\s+easier|simple\s+words|eli5|explain\s+simply)\b/i.test(lower) ||
       /(?:সহজ\s*করে|আরেকটু\s*সহজে|সহজ\s*ভাষায়)/.test(trimmed);
 
     if (isSimpler) {
-      const topic = memory.activeTopic || 'the current operating systems topic';
+      const topic = memory.activeSubtopic || memory.activeTopic || 'the current operating systems topic';
       const entities = memory.recentEntities.length > 0 ? ` (${memory.recentEntities.slice(0, 4).join(', ')})` : '';
       return mapResult(`Simple, easy-to-understand explanation of ${topic}${entities} with everyday analogies`, true, 'clarify_simple');
     }
 
-    // 7. Detect Example request: "example daw", "eta ekta example diye bujhao", "give an example", "আরেকটা উদাহরণ"
+    // 7. Example request: e.g. "example daw", "real life example daw", "give an example", "আরেকটা উদাহরণ"
     const isExample = 
       /\b(example|udahar|udaron|udahoron|dhoro|dhorun|give\s+an\s+example)\b/i.test(lower) ||
-      /(?:উদাহরণ|দৃষ্টান্ত)/.test(trimmed);
+      /(?:উদাহরণ|দৃষ্টান্ত)/.test(trimmed) ||
+      lower === 'example daw';
 
     if (isExample) {
-      const topic = memory.activeTopic || 'Operating Systems concepts';
+      const topic = memory.activeSubtopic || memory.activeTopic || 'Operating Systems concepts';
       return mapResult(`Concrete real-world example and practical scenario explaining ${topic}`, true, 'example');
     }
 
-    // 8. Detect Pronoun / Anaphoric references: "eta", "eita", "oita", "etar", "eitar", "this", "that", "it"
+    // 8. Exam questions / Important topics: e.g. "kon gula exam e aste pare?", "important topics", "exam questions"
+    const isExamTopics =
+      /\b(exam\s*e|porikkha|exam\s+questions|important\s+topics|kon\s+gula\s+exam|exam\s+er\s+jonno)\b/i.test(lower) ||
+      /(?:পরীক্ষায়|পরীক্ষায়|গুরুত্বপূর্ণ\s*টপিক)/.test(trimmed);
+
+    if (isExamTopics) {
+      const docName = memory.recentDocReferences[0] || memory.attachedDocuments?.[0];
+      const topic = docName ? `the attached study material ${docName}` : (memory.activeSubtopic || memory.activeTopic || 'Operating Systems');
+      return mapResult(`High yield exam questions, core concepts, and important exam topics for ${topic}`, true, 'exam_topics');
+    }
+
+    // 9. Chapter questions: "chapter 2 er main topic gula bolo", "chapter 3 theke important ki?"
+    const chapMatch = lower.match(/\bchapter\s*([0-9]+)\b/i);
+    if (chapMatch) {
+      const chapNum = chapMatch[1];
+      const chapRef = `Chapter ${chapNum}`;
+      memory.activeChapter = chapRef;
+      const docName = memory.recentDocReferences[0] || 'the study document';
+      return mapResult(`Main topics, key concepts, and summaries from ${chapRef} of ${docName}`, true, 'DOCUMENT_LOOKUP', {
+        chapterRef: chapRef
+      });
+    }
+
+    // 10. Document-referencing query: "ei PDF theke...", "ei doc theke...", "from this pdf"
+    const isDocQuery = /\b(ei\s+pdf|ei\s+doc|ei\s+document|from\s+this\s+pdf|in\s+this\s+pdf|this\s+document)\b/i.test(lower) ||
+      /(?:এই\s*পিডিএফ|এই\s*ডকুমেন্ট)/.test(trimmed);
+    if (isDocQuery) {
+      const docName = memory.recentDocReferences[0] || 'the attached document';
+      return mapResult(`${rawQuery} (scoped to ${docName})`, true, 'DOCUMENT_LOOKUP');
+    }
+
+    // 11. Self-contained query guard (Phase 10 Section 3 & 6):
+    // If the query defines its own topic or is an independent complete question, DO NOT overwrite!
+    const isSelfContained = 
+      /^(what is|explain|define|tell me about|how does|what are)\s+/i.test(lower) ||
+      (lower.includes(' ki?') && !lower.includes('eta') && !lower.includes('oita') && !lower.includes('eita')) ||
+      (lower.length > 25 && !lower.includes('eta') && !lower.includes('oita') && !lower.includes('ager') && !isDocQuery);
+
+    if (isSelfContained) {
+      return mapResult(rawQuery, false, 'standalone');
+    }
+
+    // 11. Pronoun / Anaphoric references: "eta", "eita", "oita", "etar", "eitar", "this", "that", "it"
     const hasPronoun = 
       /\b(eta|eita|oita|sheta|etar|eitar|oitar|shetar|this|that|it|these|those)\b/i.test(lower) ||
       /(?:এটা|এইটা|ওইটা|সেটা|এটার|এইটার|ঐটা)/.test(trimmed);
 
-    if (hasPronoun && memory.activeTopic) {
-      const resolved = `${memory.activeTopic} - ${trimmed}`;
+    if (hasPronoun && (memory.activeSubtopic || memory.activeTopic)) {
+      const topic = memory.activeSubtopic || memory.activeTopic;
+      const resolved = `${topic} - ${trimmed}`;
       return mapResult(resolved, true, 'general_followup');
     }
 
-    // 9. Short follow-up queries (< 35 chars) in an ongoing conversation
-    if (trimmed.length < 35 && (history.length > 0 || memory.lastUserQuery) && memory.activeTopic) {
-      return mapResult(`${memory.activeTopic} - ${trimmed}`, true, 'general_followup');
+    // 12. Short follow-up queries (< 35 chars) in an ongoing conversation
+    if (trimmed.length < 35 && (history.length > 0 || memory.lastUserQuery) && (memory.activeSubtopic || memory.activeTopic)) {
+      const topic = memory.activeSubtopic || memory.activeTopic;
+      return mapResult(`${topic} - ${trimmed}`, true, 'general_followup');
     }
 
-    // 10. Standalone query: No rewriting required
+    // 13. Default standalone
     return mapResult(rawQuery, false, 'standalone');
   }
 }
 
 export const queryRewriter = new QueryRewriter();
+

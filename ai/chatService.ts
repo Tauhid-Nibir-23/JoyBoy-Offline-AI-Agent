@@ -6,6 +6,7 @@ import { resolveResponseLanguage, buildLanguageSystemPrompt } from './languageDe
 import { conversationMemory } from './conversationMemory';
 import { queryRewriter } from './queryRewriter';
 import { conversationContextManager } from './contextManager';
+import { validateResponse } from './responseValidator';
 import {
   getAllConversations,
   createConversationInDB,
@@ -338,11 +339,17 @@ export class ChatService {
       }
     }
 
+    let rewrittenQueryInfo = queryRewriter.rewriteQuery(conversationId, userQueryText, messageHistory);
+    let resolvedUserPrompt = userQueryText;
+
+    if (rewrittenQueryInfo.wasRewritten) {
+      const memory = conversationMemory.getMemory(conversationId);
+      memory.lastUserIntent = rewrittenQueryInfo.targetAction || rewrittenQueryInfo.intent;
+    }
+
     if (shouldRunRAG) {
       try {
-        // Phase 9 Part 3: Smart query rewriting resolving follow-ups, pronouns & active topics
-        const rewritten = queryRewriter.rewriteQuery(conversationId, userQueryText, messageHistory);
-        const searchQuery = rewritten.resolvedQuery;
+        const searchQuery = rewrittenQueryInfo.resolvedQuery;
 
         const ragContext = await ragService.buildContext(searchQuery, {
           filterDocumentIds: eligibleDocFilter,
@@ -369,10 +376,25 @@ export class ChatService {
     }
 
     if (!ragSystemPrompt) {
-      ragSystemPrompt = `You are an offline personal study assistant. Answer the user's question directly and thoroughly in clear, structured markdown.\n\n${langPolicy}`;
+      ragSystemPrompt = 
+`You are JoyBoy, a private offline study assistant.
+Your job is to answer the student's actual question directly and accurately.
+
+Rules:
+1. Follow the latest user question.
+2. Use conversation context when the user refers to previous messages.
+3. Use attached study materials when relevant.
+4. Do not invent information from documents. Never fabricate citations.
+5. If information is missing, say so honestly.
+6. Do not repeat the same sentence or phrase unnecessarily.
+7. Be concise unless the user asks for detail.
+8. Explain difficult concepts using simple examples when appropriate.
+9. Never answer a previous question instead of the current question.
+
+${langPolicy}`;
     }
 
-    // Phase 9 Part 1: Token-budget-aware context window assembly
+    // Phase 10: Token-budget-aware context window assembly
     const assembledContext = conversationContextManager.assembleContext({
       conversationId,
       history: promptMsgs,
@@ -412,6 +434,32 @@ export class ChatService {
 
     try {
       assistantText = await provider.generateResponse(promptMsgs, generateOptions);
+
+      // Phase 10 Section 18: Lightweight response self-check layer with single retry
+      const memoryState = conversationMemory.getMemory(conversationId);
+      const validation = validateResponse({
+        userQuery: userQueryText,
+        assistantResponse: assistantText,
+        activeTopic: memoryState.activeTopic,
+        previousQuestion: memoryState.lastUserQuery,
+        previousAssistantSnippet: memoryState.lastAssistantAnswerSnippet,
+        hasAttachedDocs: attachedDocs.length > 0,
+        expectedLanguage: targetLang === 'banglish' ? 'bn' : (targetLang as 'bn' | 'en')
+      });
+
+      if (validation.retryNeeded && validation.correctedInstruction && !options?.signal?.aborted) {
+        // Retry ONCE with corrected compact instruction
+        const retrySystemPrompt = `${ragSystemPrompt}\n\n[SELF-CHECK CORRECTION]:\n${validation.correctedInstruction}`;
+        const retryOptions = { ...generateOptions, systemPrompt: retrySystemPrompt };
+        try {
+          const retriedText = await provider.generateResponse(promptMsgs, retryOptions);
+          if (retriedText && retriedText.length >= 10) {
+            assistantText = retriedText;
+          }
+        } catch {
+          // If retry fails, keep original assistantText
+        }
+      }
     } catch (err: any) {
       if (err.message?.includes('cancelled') || options?.signal?.aborted) {
         wasCancelled = true;

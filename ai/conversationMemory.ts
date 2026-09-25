@@ -7,20 +7,48 @@ export interface ExtractedQuestionItem {
   text: string;
 }
 
+export interface ExtractedEnumeratedItem {
+  number: number;
+  title: string;
+  text: string;
+}
+
+export interface ConversationTurnRecord {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  topic?: string | null;
+  intent?: string | null;
+}
+
 export interface ConversationMemoryState {
   conversationId: string;
   activeTopic: string | null;
+  previousTopic: string | null;
+  activeSubtopic?: string | null;
+  activeDocument: string | null;
+  activePage: number | null;
+  activeChapter: string | null;
+  activeQuestion: string | null;
+  lastUserIntent: string | null;
+  lastUserQuery: string | null;
+  lastAssistantAnswer: string | null;
   recentEntities: string[];
-  recentDocReferences: string[];
+  enumeratedQuestions: Record<string, string>;
+  enumeratedItems: Record<string, ExtractedEnumeratedItem>;
+  referencedConcepts: string[];
+  recentTurns: ConversationTurnRecord[];
   rollingSummary: string | null;
+  documentDerivedConcepts: string[];
+  userLanguage: string;
+  currentStudyTask: string | null;
+  // Backward compatibility:
+  recentDocReferences: string[];
   lastQuestionOrAnswerSnippet: string | null;
   lastQuestionsList: ExtractedQuestionItem[];
-  lastAssistantAnswer: string | null;
-  lastUserQuery: string | null;
   recentChapterRef?: string | null;
   attachedDocuments?: string[];
   lastAssistantAnswerSnippet?: string | null;
-  enumeratedQuestions: Record<string, string>;
 }
 
 export class ConversationMemoryManager {
@@ -44,6 +72,8 @@ export class ConversationMemoryManager {
       let recentEntities: string[] = [];
       let recentDocReferences: string[] = [];
       let lastQuestionsList: ExtractedQuestionItem[] = [];
+      let enumeratedItems: Record<string, ExtractedEnumeratedItem> = {};
+      let stateExtra: any = {};
 
       try {
         if (fromDb.recent_entities_json) recentEntities = JSON.parse(fromDb.recent_entities_json);
@@ -55,6 +85,8 @@ export class ConversationMemoryManager {
         if (fromDb.last_qa_snippet) {
           const parsed = JSON.parse(fromDb.last_qa_snippet);
           if (Array.isArray(parsed.questions)) lastQuestionsList = parsed.questions;
+          if (parsed.enumeratedItems) enumeratedItems = parsed.enumeratedItems;
+          if (parsed.stateExtra) stateExtra = parsed.stateExtra;
         }
       } catch {}
 
@@ -62,19 +94,39 @@ export class ConversationMemoryManager {
       for (const q of lastQuestionsList) {
         enumRecord[q.number.toString()] = q.text;
       }
+      for (const [k, v] of Object.entries(enumeratedItems)) {
+        if (!enumRecord[k]) {
+          enumRecord[k] = v.title ? `${v.title}: ${v.text}` : v.text;
+        }
+      }
 
       const state: ConversationMemoryState = {
         conversationId,
         activeTopic: fromDb.active_topic,
+        previousTopic: stateExtra.previousTopic || null,
+        activeSubtopic: stateExtra.activeSubtopic || null,
+        activeDocument: recentDocReferences[0] || null,
+        activePage: stateExtra.activePage || null,
+        activeChapter: stateExtra.activeChapter || null,
+        activeQuestion: stateExtra.activeQuestion || null,
+        lastUserIntent: stateExtra.lastUserIntent || null,
         recentEntities,
         recentDocReferences,
         rollingSummary: fromDb.summary,
         lastQuestionOrAnswerSnippet: fromDb.last_qa_snippet,
         lastQuestionsList,
-        lastAssistantAnswer: null,
-        lastUserQuery: null,
+        lastAssistantAnswer: stateExtra.lastAssistantAnswer || null,
+        lastUserQuery: stateExtra.lastUserQuery || null,
         attachedDocuments: recentDocReferences,
-        enumeratedQuestions: enumRecord
+        enumeratedQuestions: enumRecord,
+        enumeratedItems,
+        referencedConcepts: stateExtra.referencedConcepts || [],
+        recentTurns: stateExtra.recentTurns || [],
+        documentDerivedConcepts: stateExtra.documentDerivedConcepts || [],
+        userLanguage: stateExtra.userLanguage || 'auto',
+        currentStudyTask: stateExtra.currentStudyTask || null,
+        recentChapterRef: stateExtra.activeChapter || null,
+        lastAssistantAnswerSnippet: stateExtra.lastAssistantAnswer || null
       };
 
       this.cache.set(conversationId, state);
@@ -84,6 +136,13 @@ export class ConversationMemoryManager {
     const initial: ConversationMemoryState = {
       conversationId,
       activeTopic: null,
+      previousTopic: null,
+      activeSubtopic: null,
+      activeDocument: null,
+      activePage: null,
+      activeChapter: null,
+      activeQuestion: null,
+      lastUserIntent: null,
       recentEntities: [],
       recentDocReferences: [],
       rollingSummary: null,
@@ -92,7 +151,15 @@ export class ConversationMemoryManager {
       lastAssistantAnswer: null,
       lastUserQuery: null,
       attachedDocuments: [],
-      enumeratedQuestions: {}
+      enumeratedQuestions: {},
+      enumeratedItems: {},
+      referencedConcepts: [],
+      recentTurns: [],
+      documentDerivedConcepts: [],
+      userLanguage: 'auto',
+      currentStudyTask: null,
+      recentChapterRef: null,
+      lastAssistantAnswerSnippet: null
     };
 
     this.cache.set(conversationId, initial);
@@ -116,7 +183,19 @@ export class ConversationMemoryManager {
         }
       }
       memory.attachedDocuments = [...memory.recentDocReferences];
+      memory.activeDocument = memory.recentDocReferences[0] || null;
     }
+
+    memory.recentTurns.push({
+      role,
+      content,
+      timestamp: new Date().toISOString(),
+      topic: memory.activeTopic
+    });
+    if (memory.recentTurns.length > 20) {
+      memory.recentTurns = memory.recentTurns.slice(-20);
+    }
+
     if (role === 'user') {
       memory.lastUserQuery = content;
       this.extractTopicAndEntities(content, memory);
@@ -124,16 +203,60 @@ export class ConversationMemoryManager {
       memory.lastAssistantAnswer = content;
       memory.lastAssistantAnswerSnippet = content;
       memory.lastQuestionsList = this.extractEnumeratedQuestions(content);
+      const parsedItems = this.extractEnumeratedItems(content);
+
+      const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
+      for (const it of parsedItems) {
+        itemsRecord[it.number.toString()] = it;
+      }
+      memory.enumeratedItems = itemsRecord;
+
       const enumRecord: Record<string, string> = {};
       for (const q of memory.lastQuestionsList) {
         enumRecord[q.number.toString()] = q.text;
       }
+      for (const it of parsedItems) {
+        if (!enumRecord[it.number.toString()]) {
+          enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+        }
+      }
       memory.enumeratedQuestions = enumRecord;
+
       const snippet = content.length > 300 ? content.substring(0, 300) + '...' : content;
       memory.lastQuestionOrAnswerSnippet = JSON.stringify({
         snippet,
-        questions: memory.lastQuestionsList
+        questions: memory.lastQuestionsList,
+        enumeratedItems: memory.enumeratedItems,
+        stateExtra: {
+          previousTopic: memory.previousTopic,
+          activeSubtopic: memory.activeSubtopic,
+          activeChapter: memory.activeChapter,
+          activePage: memory.activePage,
+          activeQuestion: memory.activeQuestion,
+          lastUserIntent: memory.lastUserIntent,
+          lastUserQuery: memory.lastUserQuery,
+          lastAssistantAnswer: memory.lastAssistantAnswer,
+          referencedConcepts: memory.referencedConcepts,
+          recentTurns: memory.recentTurns.slice(-10),
+          documentDerivedConcepts: memory.documentDerivedConcepts,
+          userLanguage: memory.userLanguage,
+          currentStudyTask: memory.currentStudyTask
+        }
       });
+    }
+
+    if (memory.recentTurns.length > 6) {
+      const older = memory.recentTurns.slice(0, memory.recentTurns.length - 6);
+      const summaryItems: string[] = [];
+      if (memory.activeTopic) summaryItems.push(`Topic: ${memory.activeTopic}`);
+      if (memory.activeSubtopic) summaryItems.push(`Active Concept: ${memory.activeSubtopic}`);
+      for (const t of older) {
+        if (t.role === 'user') {
+          const short = t.content.length > 60 ? t.content.substring(0, 60) + '...' : t.content;
+          summaryItems.push(`User asked: "${short}"`);
+        }
+      }
+      memory.rollingSummary = summaryItems.join('; ');
     }
     this.cache.set(conversationId, memory);
     return memory;
@@ -173,9 +296,22 @@ export class ConversationMemoryManager {
       memory.lastAssistantAnswer = lastAssistant.content;
       memory.lastAssistantAnswerSnippet = lastAssistant.content;
       memory.lastQuestionsList = this.extractEnumeratedQuestions(lastAssistant.content);
+      const parsedItems = this.extractEnumeratedItems(lastAssistant.content);
+
+      const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
+      for (const it of parsedItems) {
+        itemsRecord[it.number.toString()] = it;
+      }
+      memory.enumeratedItems = itemsRecord;
+
       const enumRecord: Record<string, string> = {};
       for (const q of memory.lastQuestionsList) {
         enumRecord[q.number.toString()] = q.text;
+      }
+      for (const it of parsedItems) {
+        if (!enumRecord[it.number.toString()]) {
+          enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+        }
       }
       memory.enumeratedQuestions = enumRecord;
       
@@ -185,7 +321,23 @@ export class ConversationMemoryManager {
       
       memory.lastQuestionOrAnswerSnippet = JSON.stringify({
         snippet,
-        questions: memory.lastQuestionsList
+        questions: memory.lastQuestionsList,
+        enumeratedItems: memory.enumeratedItems,
+        stateExtra: {
+          previousTopic: memory.previousTopic,
+          activeSubtopic: memory.activeSubtopic,
+          activeChapter: memory.activeChapter,
+          activePage: memory.activePage,
+          activeQuestion: memory.activeQuestion,
+          lastUserIntent: memory.lastUserIntent,
+          lastUserQuery: memory.lastUserQuery,
+          lastAssistantAnswer: memory.lastAssistantAnswer,
+          referencedConcepts: memory.referencedConcepts,
+          recentTurns: memory.recentTurns.slice(-10),
+          documentDerivedConcepts: memory.documentDerivedConcepts,
+          userLanguage: memory.userLanguage,
+          currentStudyTask: memory.currentStudyTask
+        }
       });
     }
 
@@ -195,6 +347,9 @@ export class ConversationMemoryManager {
       const summaryItems: string[] = [];
       if (memory.activeTopic) {
         summaryItems.push(`Topic: ${memory.activeTopic}`);
+      }
+      if (memory.activeSubtopic) {
+        summaryItems.push(`Active Concept: ${memory.activeSubtopic}`);
       }
       for (const m of olderMessages) {
         if (m.role === 'user') {
@@ -236,8 +391,30 @@ export class ConversationMemoryManager {
         memory.recentEntities.push(chapEntity);
       }
       memory.recentChapterRef = chapEntity;
-      memory.activeTopic = chapEntity;
+      memory.activeChapter = chapEntity;
+      if (!memory.activeTopic) {
+        memory.activeTopic = chapEntity;
+      }
       return;
+    }
+
+    // Check Page mentions
+    const pageMatch = lower.match(/\bpage\s*([0-9]+)\b/i) || raw.match(/পৃষ্ঠা\s*([০-৯0-9]+)/i);
+    if (pageMatch) {
+      const pageNum = parseInt(pageMatch[1], 10);
+      if (!isNaN(pageNum)) {
+        memory.activePage = pageNum;
+      }
+    }
+
+    // Subtopic: Deadlock conditions
+    if (lower.includes('condition') || lower.includes('শর্ত')) {
+      if (memory.activeTopic === 'Deadlock' || lower.includes('deadlock')) {
+        memory.activeSubtopic = 'Four Conditions of Deadlock';
+        if (!memory.referencedConcepts.includes('Four Conditions of Deadlock')) {
+          memory.referencedConcepts.push('Four Conditions of Deadlock');
+        }
+      }
     }
 
     // Check specific known operating system & computer science concepts
@@ -271,6 +448,9 @@ export class ConversationMemoryManager {
 
     for (const item of knownTopics) {
       if (item.pattern.test(lower)) {
+        if (memory.activeTopic && memory.activeTopic !== item.topic) {
+          memory.previousTopic = memory.activeTopic;
+        }
         memory.activeTopic = item.topic;
         for (const e of item.entities) {
           if (!memory.recentEntities.includes(e)) {
@@ -288,12 +468,90 @@ export class ConversationMemoryManager {
         .replace(/\s+(ki\?|ki|বলতে কি বোঝায়|কাকে বলে)\??$/i, '')
         .trim();
       if (topicCandidate.length > 2 && topicCandidate.length < 50) {
+        if (memory.activeTopic && memory.activeTopic !== topicCandidate) {
+          memory.previousTopic = memory.activeTopic;
+        }
         memory.activeTopic = topicCandidate;
         if (!memory.recentEntities.includes(topicCandidate)) {
           memory.recentEntities.push(topicCandidate);
         }
       }
     }
+  }
+
+  /**
+   * Extracts numbered list items and concepts from assistant message.
+   * E.g.
+   * 1. Mutual Exclusion: ...
+   * 2. Hold and Wait: ...
+   * 3. No Preemption: ...
+   * 4. Circular Wait: ...
+   */
+  public extractEnumeratedItems(assistantContent: string): ExtractedEnumeratedItem[] {
+    const items: ExtractedEnumeratedItem[] = [];
+    const lines = assistantContent.split('\n');
+    const bengaliNumerals: Record<string, number> = {
+      '১': 1, '২': 2, '৩': 3, '৪': 4, '৫': 5,
+      '৬': 6, '৭': 7, '৮': 8, '৯': 9, '১০': 10
+    };
+
+    const regex = /^(?:\*\*|\#\#)?\s*(?:[Qq]uestion\s*)?([0-9১-৯]+)[\.\:\)]\s*(.+)/;
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(regex);
+      if (match) {
+        let numStr = match[1];
+        let num = parseInt(numStr, 10);
+        if (isNaN(num) && bengaliNumerals[numStr]) {
+          num = bengaliNumerals[numStr];
+        }
+        if (!isNaN(num)) {
+          const raw = match[2].trim();
+          let title = '';
+          const boldMatch = raw.match(/^\*\*([^*]+)\*\*/);
+          if (boldMatch) {
+            title = boldMatch[1].trim();
+          } else {
+            const sepMatch = raw.match(/^([^:\-–]+)[:\-–]/);
+            if (sepMatch) {
+              title = sepMatch[1].trim();
+            } else {
+              title = raw.slice(0, 35).trim();
+            }
+          }
+          title = title.replace(/\*\*/g, '').trim();
+          const cleanText = raw.replace(/\*\*/g, '').trim();
+          items.push({
+            number: num,
+            title: title || cleanText,
+            text: cleanText
+          });
+        }
+      }
+    }
+
+    return items;
+  }
+
+  /**
+   * Resolves a referenced enumerated item (e.g. 2 number ta -> Hold and Wait).
+   */
+  public resolveReferencedItem(
+    conversationId: string,
+    itemNumber: number
+  ): { number: number; title: string; text: string } | null {
+    const memory = this.getMemory(conversationId);
+    const found = memory.enumeratedItems[itemNumber.toString()];
+    if (found) {
+      return found;
+    }
+    const qText = memory.enumeratedQuestions[itemNumber.toString()];
+    if (qText) {
+      const title = qText.split(/[:\-–]/)[0].replace(/\*\*/g, '').trim();
+      return { number: itemNumber, title, text: qText };
+    }
+    return null;
   }
 
   /**

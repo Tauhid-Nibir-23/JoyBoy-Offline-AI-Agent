@@ -110,6 +110,22 @@ export class LocalRetriever {
         blendedSimilarity = Math.min(1.0, blendedSimilarity + 0.35);
       }
 
+      // Chapter-aware boosting
+      const chapterMatch = trimmed.match(/\bchapter\s*([0-9]{1,2})\b/i) || trimmed.match(/অধ্যায়\s*([০-৯0-9]{1,2})/i);
+      if (chapterMatch) {
+        const chapNum = chapterMatch[1];
+        const textLower = chunkRow.text.toLowerCase();
+        const headingLower = (chunkRow.heading || '').toLowerCase();
+        if (
+          textLower.includes(`chapter ${chapNum}`) ||
+          headingLower.includes(`chapter ${chapNum}`) ||
+          headingLower.includes(`ch ${chapNum}`) ||
+          headingLower.includes(`chapter 0${chapNum}`)
+        ) {
+          blendedSimilarity = Math.min(1.0, blendedSimilarity + 0.30);
+        }
+      }
+
       // Table boosting if query asks about differences, comparison or tables
       const isTableQuery = /\b(difference|compare|vs|table|properties|algorithm)\b/i.test(trimmed);
       if (isTableQuery && chunkRow.text.includes('|')) {

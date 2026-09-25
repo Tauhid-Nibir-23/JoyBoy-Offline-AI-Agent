@@ -46,18 +46,24 @@ export class ConversationContextManager {
     const availableInputBudget = Math.max(512, contextLength - reservedOutputTokens);
     const memory = conversationMemory.getMemory(conversationId);
 
-    // 1. Build System Instruction with Chat Identity & Scoped Documents
+    // 1. Build System Instruction with Priority 1 & 4 (Role, Language Policy, Topic State, Scoped Docs)
     let enhancedSystemPrompt = systemInstruction.trim();
+
+    if (memory.activeTopic) {
+      enhancedSystemPrompt += `\n\n[ACTIVE TOPIC STATE]:\nCurrent Topic: ${memory.activeTopic}`;
+      if (memory.activeSubtopic) {
+        enhancedSystemPrompt += `\nActive Concept / Subtopic: ${memory.activeSubtopic}`;
+      }
+      if (memory.activeChapter) {
+        enhancedSystemPrompt += `\nActive Chapter: ${memory.activeChapter}`;
+      }
+    }
 
     if (attachedDocs.length > 0) {
       const docList = attachedDocs.map((d) => `• ${d.filename} (${(d.file_size / 1024).toFixed(0)} KB)`).join('\n');
-      enhancedSystemPrompt += `\n\n[CURRENT CHAT ATTACHED DOCUMENTS (${attachedDocs.length})]:\n${docList}\nAll study answers must strictly prioritize and ground on these attached documents.`;
+      enhancedSystemPrompt += `\n\n[ATTACHED STUDY DOCUMENTS (${attachedDocs.length})]:\n${docList}\nAll study answers must strictly prioritize and ground on these attached documents.`;
     } else {
       enhancedSystemPrompt += '\n\n[ATTACHED DOCUMENTS]: None. This is a general study chat session.';
-    }
-
-    if (memory.activeTopic) {
-      enhancedSystemPrompt += `\n[ACTIVE TOPIC]: ${memory.activeTopic}`;
     }
 
     const systemMsg: ChatMessage = {
@@ -71,17 +77,17 @@ export class ConversationContextManager {
     let usedTokens = estimateMessageTokens(systemMsg);
     let remainingBudget = availableInputBudget - usedTokens;
 
-    // 2. Prepare rolling summary if conversation has older history
-    let summaryMsg: ChatMessage | null = null;
-    let hasSummary = false;
-
-    // Separate history excluding system messages
+    // 2. Separate history excluding system messages
     const nonSystem = history.filter((m) => m.role !== 'system');
 
-    // Keep the most recent 6 messages in full
-    const RECENT_TURN_COUNT = 6;
+    // Keep the most recent 6-8 messages in full
+    const RECENT_TURN_COUNT = 8;
     const recentMessages = nonSystem.slice(-RECENT_TURN_COUNT);
     const olderMessages = nonSystem.slice(0, Math.max(0, nonSystem.length - RECENT_TURN_COUNT));
+
+    // 3. Prepare rolling summary if older messages exist (Priority 6)
+    let summaryMsg: ChatMessage | null = null;
+    let hasSummary = false;
 
     if (olderMessages.length > 0 || memory.rollingSummary) {
       const summaryText = memory.rollingSummary || 
@@ -104,7 +110,7 @@ export class ConversationContextManager {
       }
     }
 
-    // 3. Assemble Recent Messages backwards to fit remaining token budget
+    // 4. Assemble Recent Messages backwards to fit remaining token budget (Priority 3 & 2)
     const finalSelected: ChatMessage[] = [];
 
     // Ensure the latest user message is always preserved
@@ -121,7 +127,8 @@ export class ConversationContextManager {
       }
     }
 
-    // 4. Construct final message list
+    // 5. Construct final message list respecting priority order:
+    // System Instruction -> Summary (if present) -> Immediate Turns (ending with current user prompt)
     const assembled: ChatMessage[] = [systemMsg];
     if (summaryMsg) {
       assembled.push(summaryMsg);

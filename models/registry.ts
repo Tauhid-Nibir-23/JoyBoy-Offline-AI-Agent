@@ -26,7 +26,7 @@ export const RECOMMENDED_3B_MODEL: ModelProfile = {
   status: 'Not Installed',
   recommendedRamGb: 8,
   isRecommended: true,
-  description: 'Recommended for this PC (AMD Ryzen 5 5600G, ~14 GB RAM). High-quality reasoning, follow-ups, and Bengali/Banglish comprehension.'
+  description: 'Recommended for this PC · Better reasoning, better conversation context, better Bengali/Banglish response quality, higher RAM usage than 0.5B.'
 };
 
 export const FALLBACK_05B_MODEL: ModelProfile = {
@@ -41,7 +41,7 @@ export const FALLBACK_05B_MODEL: ModelProfile = {
   status: 'Not Installed',
   recommendedRamGb: 4,
   isFallback: true,
-  description: 'Ultra-fast lightweight fallback model currently installed on disk.'
+  description: 'Lightweight, faster, lower memory usage, lower reasoning/context quality. Fallback model.'
 };
 
 export const HEAVY_7B_MODEL: ModelProfile = {
@@ -56,7 +56,7 @@ export const HEAVY_7B_MODEL: ModelProfile = {
   status: 'Not Installed',
   recommendedRamGb: 16,
   isHeavy: true,
-  description: 'Heavy — not recommended as default for this hardware (~14 GB RAM). High resource usage.'
+  description: 'Heavy — not recommended as default for laptops without dedicated VRAM. High resource usage.'
 };
 
 export const INITIAL_REGISTERED_MODELS: ModelProfile[] = [

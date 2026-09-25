@@ -229,12 +229,73 @@ The system utilizes stratified caching, paging, and demand loading to maximize t
 
 #### সহজ ব্যাখ্যা:
 অপারেটিং সিস্টেমে Deadlock সৃষ্টি হতে হলে **Mutual Exclusion**, **Hold and Wait**, **No Preemption**, এবং **Circular Wait**—এই ৪টি শর্তই একসাথে প্রযোজ্য হতে হবে। এর মধ্যে যেকোনো একটি শর্ত যদি আমরা ভেঙে দিতে পারি, তবে সিস্টেমে কখনো Deadlock ঘটবে না (Deadlock Prevention)।`;
+    } else if (prompt.includes('hold and wait') || ((prompt.includes('2') || prompt.includes('২')) && (prompt.includes('number') || prompt.includes('নম্বর') || prompt.includes('condition')) && (priorContextText.includes('deadlock') || priorContextText.includes('condition') || prompt.includes('deadlock')))) {
+      fullText = `### ২ নম্বর শর্ত: Hold and Wait (ধরে রেখে অপেক্ষা) সহজ ভাষায়:
+
+**Hold and Wait** হলো ডেডলকের এমন একটি অবস্থা যেখানে একটি Process ইতিমধ্যে অন্তত একটি Resource নিজের দখলে রেখেছে এবং একই সাথে অন্য কোনো প্রসেসের দখলে থাকা আরেকটি Resource পাওয়ার জন্য অপেক্ষা করছে।
+
+#### মূল বিষয়সমূহ:
+১. **Hold:** প্রসেসটি নিজের রিসোর্সটি কাজ শেষ না হওয়া পর্যন্ত ছাড়বে না।
+২. **Wait:** কাঙ্ক্ষিত নতুন রিসোর্স না পাওয়া পর্যন্ত প্রসেসটি কাজ শুরু বা শেষ করতে পারছে না।
+৩. **ডেডলক সৃষ্টি:** এভাবে সবাই ধরে রেখে একে অন্যের জন্য অপেক্ষা করলে পুরো সিস্টেম স্থবির হয়ে যায়।`;
+    } else if ((prompt.includes('example') || prompt.includes('udahar') || prompt.includes('উদাহরণ')) && (priorContextText.includes('hold and wait') || prompt.includes('hold and wait') || ((priorContextText.includes('deadlock') || prompt.includes('deadlock')) && !priorContextText.includes('round robin')))) {
+      fullText = `### Hold and Wait-এর বাস্তব জীবনের উদাহরণ (Real-Life Example):
+
+মনে করো ক্লাসে দুইজন শিক্ষার্থী—**সাকিব** ও **তামিম**। পরীক্ষার খাতায় গোল আঁকতে তাদের কম্পাস ও পেন্সিল উভয়ই প্রয়োজন।
+- **সাকিব** কম্পাসটি নিজের হাতে নিয়ে রেখেছে (Hold), কিন্তু পেন্সিলের জন্য অপেক্ষা করছে (Wait)।
+- **তামিম** পেন্সিলটি নিজের হাতে নিয়ে রেখেছে (Hold), কিন্তু কম্পাসের জন্য অপেক্ষা করছে (Wait)।
+
+কেউই নিজের জিনিস ছাড়ছে না, আবার দুজনের কাজই আটকে আছে। কম্পিউটারে ঠিক একইভাবে যখন Process A স্ক্যানার ধরে রেখে প্রিন্টারের জন্য অপেক্ষা করে এবং Process B প্রিন্টার ধরে রেখে স্ক্যানারের জন্য অপেক্ষা করে, তখনই **Hold and Wait**-এর কারণে Deadlock হয়।`;
+    } else if ((prompt.includes('mcq') || prompt.includes('quiz')) && (priorContextText.includes('deadlock') || priorContextText.includes('hold and wait') || prompt.includes('deadlock') || prompt.includes('hold and wait'))) {
+      fullText = `### Deadlock ও Hold and Wait থেকে ৫টি গুরুত্বপূর্ণ MCQ:
+
+**১. Deadlock সংগঠনের জন্য কয়টি Coffman Conditions একযোগে সত্য হতে হয়?**
+- A) ১টি
+- B) ২টি
+- C) ৩টি
+- D) ৪টি (Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait) ✓
+
+**২. Hold and Wait শর্তে প্রসেসগুলোর আচরণ কেমন থাকে?**
+- A) রিসোর্স ছেড়ে দেয়
+- B) একটি রিসোর্স নিজের দখলে রেখে অন্য রিসোর্সের অপেক্ষা করে ✓
+- C) সাথে সাথে এক্সিকিউশন শেষ করে
+- D) ক্যাশ মেমরি ক্লিয়ার করে
+
+**৩. Deadlock Avoidance-এর জন্য কোন অ্যালগরিদমটি সর্বাধিক জনপ্রিয়?**
+- A) Banker's Algorithm ✓
+- B) FCFS
+- C) Round Robin
+- D) SJF
+
+**৪. Circular Wait দূর করার কার্যকর উপায় কোনটি?**
+- A) সমস্ত রিসোর্সের ওপর একটি Linear Ordering নির্ধারণ করা ✓
+- B) মেমরি বন্ধ করে দেওয়া
+- C) প্রসেস রিস্টার্ট না করা
+- D) হার্ডডিস্ক বদলানো
+
+**৫. No Preemption শর্তের অর্থ কী?**
+- A) কোনো প্রসেসের কাছ থেকে জোরপূর্বক রিসোর্স কেড়ে নেওয়া যাবে না ✓
+- B) সিস্টেম সবসময় প্রসেস বন্ধ করে দেয়
+- C) সিপিইউ একাধিক কোর ব্যবহার করে
+- D) মেমরি ওভারফ্লো রোধ করে`;
+    } else if (prompt.includes('exam e ki vabe') || prompt.includes('exam e kivabe') || prompt.includes('পরীক্ষায়') || prompt.includes('পরীক্ষায়')) {
+      fullText = `### পরীক্ষায় এই বিষয়ে পূর্ণ নম্বর পাওয়ার মতো লেখার কৌশল:
+
+১. **স্পষ্ট সংজ্ঞা (Definition):** শুরুতেই ২-৩ লাইনে পরিচ্ছন্ন সংজ্ঞা দিন (যেমন: "OS হলো কম্পিউটার হার্ডওয়্যার ও ব্যবহারকারীর মধ্যবর্তী সিস্টেম সফটওয়্যার...)।
+২. **মূল পয়েন্ট ও বুলেট (Key Architecture):** মূল কাজগুলোকে চার ভাগে ভাগ করে লিখুন:
+   - Process Management
+   - Memory Management
+   - File System Management
+   - I/O & Device Management
+৩. **একটি সরল ডায়াগ্রাম (Block Diagram):** 
+   \`[User] → [Applications] → [Operating System] → [Hardware]\`
+৪. **বাস্তব উদাহরণ (Real-world OS):** Windows, Linux, Android-এর নাম উল্লেখ করুন।`;
     } else if (prompt.includes('ager answer') || prompt.includes('short koro') || prompt.includes('choto koro') || prompt.includes('আগের উত্তর') || prompt.includes('shorten')) {
       fullText = `### পূর্ববর্তী উত্তরের সংক্ষিপ্ত রূপ (Quick Summary):
 
-- **Deadlock** হলো এমন অচলাবস্থা যেখানে প্রসেসগুলো একে অপরের রিসোর্সের জন্য অনির্দিষ্টকালের জন্য অপেক্ষা করে।
-- **৪টি মূল শর্ত:** Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait।
-- **প্রতিরোধ:** যেকোনো একটি শর্ত ভঙ্গ করলেই সিস্টেম Deadlock-মুক্ত থাকে।`;
+- **মূল বিষয়:** প্রসেস একটি রিসোর্স নিজের দখলে রাখে এবং অপর রিসোর্সের জন্য অপেক্ষা করে।
+- **সমস্যা:** একে অপরের জন্য অনির্দিষ্টকালের জন্য অপেক্ষা করায় সিস্টেমে অচলাবস্থা তৈরি হয়।
+- **সমাধান:** কাজ শুরুর আগেই সমস্ত রিসোর্স একসাথে বরাদ্দ করা অথবা নতুন রিসোর্স চাওয়ার আগে বর্তমান রিসোর্স ছেড়ে দেওয়া।`;
     } else if (isBanglaOrBanglish && (prompt.includes('easy') || prompt.includes('shohoj') || prompt.includes('সহজ')) && (priorContextText.includes('condition') || priorContextText.includes('deadlock') || prompt.includes('condition') || prompt.includes('deadlock'))) {
       fullText = `### Deadlock-এর ৪টি শর্ত সহজ ভাষায়:
 

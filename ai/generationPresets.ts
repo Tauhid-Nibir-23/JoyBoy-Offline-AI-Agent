@@ -24,7 +24,7 @@ export const GENERATION_PRESETS: Record<GenerationPresetMode, GenerationParamete
     repeat_penalty: 1.15,
     max_tokens: 1024,
     context_length: 2048,
-    threads: 6 // Matches Ryzen 5 5600G physical core count
+    threads: 4 // Conservative default suitable for quad-core and multi-threaded desktop/laptop CPUs
   },
   precise: {
     mode: 'precise',
@@ -35,7 +35,7 @@ export const GENERATION_PRESETS: Record<GenerationPresetMode, GenerationParamete
     repeat_penalty: 1.2,
     max_tokens: 1024,
     context_length: 2048,
-    threads: 6
+    threads: 4
   },
   creative: {
     mode: 'creative',

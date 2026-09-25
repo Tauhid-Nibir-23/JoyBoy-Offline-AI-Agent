@@ -60,7 +60,7 @@ export function MessageList({
   if (messages.length === 0 && !isLoading) {
     return (
       <div className="chat-empty-hero">
-        <h1 className="hero-title">What can I help with?</h1>
+        <h1 className="hero-title">How can I help you study?</h1>
 
         {/* Model Missing Alert Banner */}
         {!isModelInstalled && (
@@ -111,11 +111,11 @@ export function MessageList({
         {/* Suggestion Pills */}
         <div className="suggestion-pills-row">
           {[
-            'What is an operating system?',
-            'What is deadlock?',
-            'Explain binary search algorithm',
-            'Chapter 02 theke bujhao',
-            'Round Robin scheduling ta easy kore bujhao'
+            'Explain a topic',
+            'Summarize a PDF',
+            'Generate MCQs',
+            'Make study notes',
+            'What is deadlock?'
           ].map((prompt, idx) => (
             <button
               key={idx}
