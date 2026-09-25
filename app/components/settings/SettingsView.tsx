@@ -28,7 +28,10 @@ import {
 } from '../../../database/db';
 import { chatService } from '../../../ai/chatService';
 import { modelManager } from '../../../models/manager';
-import { ModelProfile } from '../../../models/types';
+import { ModelProfile, PerformancePreset } from '../../../models/types';
+import { GENERATION_PRESETS } from '../../../models/registry';
+import { getOcrEngineStatus } from '../../../documents/intelligence/ocrProvider';
+import { OCREngineInfo } from '../../../documents/intelligence/types';
 import { runDiagnostics, DiagnosticsReport } from '../../../core/diagnostics';
 
 function formatBytes(bytes: number): string {
@@ -71,6 +74,8 @@ export function SettingsView({
     chunksCount: 0,
     databaseSizeBytes: 0
   });
+  const [ocrInfo, setOcrInfo] = useState<OCREngineInfo | null>(null);
+  const [performancePreset, setPerformancePreset] = useState<PerformancePreset>('balanced');
 
   // Advanced State (Collapsed by default)
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState<boolean>(false);
@@ -96,6 +101,7 @@ export function SettingsView({
 
   useEffect(() => {
     loadAllSettings();
+    getOcrEngineStatus().then(setOcrInfo);
   }, []);
 
   const loadAllSettings = () => {
@@ -364,6 +370,43 @@ export function SettingsView({
               </span>
             </div>
 
+            {/* Performance Preset (Phase 9 Part 13) */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Performance Preset</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Tune temperature, tokens, and sampling automatically</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {(['balanced', 'precise', 'creative'] as PerformancePreset[]).map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => {
+                      setPerformancePreset(preset);
+                      const cfg = GENERATION_PRESETS[preset];
+                      setTemperature(cfg.temperature);
+                      setMaxTokens(cfg.maxTokens);
+                      setSetting('temperature', String(cfg.temperature));
+                      setSetting('max_tokens', String(cfg.maxTokens));
+                      showToast('success', `Applied "${cfg.name}" preset.`);
+                    }}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '6px',
+                      backgroundColor: performancePreset === preset ? 'rgba(245, 158, 11, 0.2)' : '#27272a',
+                      border: performancePreset === preset ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.1)',
+                      color: performancePreset === preset ? '#fbbf24' : '#a1a1aa',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      textTransform: 'capitalize'
+                    }}
+                  >
+                    {preset === 'balanced' ? 'Study (Default)' : preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Temperature Slider */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
               <div>
@@ -451,14 +494,22 @@ export function SettingsView({
               </div>
             </div>
 
-            {/* OCR Pipeline Status */}
+            {/* OCR Pipeline Status (Phase 9 Part 6) */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderTop: '1px solid rgba(255, 255, 255, 0.06)', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
               <div>
                 <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Local OCR Engine</div>
-                <div style={{ fontSize: '12px', color: '#71717a' }}>Scanned and image-based PDF text detection</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Scanned and image-based PDF text detection via Tesseract</div>
               </div>
-              <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 500, backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>
-                ✓ Offline Fallback Active
+              <span style={{ 
+                color: ocrInfo?.isAvailable ? '#10b981' : '#f59e0b', 
+                fontSize: '12px', 
+                fontWeight: 600, 
+                backgroundColor: ocrInfo?.isAvailable ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)', 
+                border: `1px solid ${ocrInfo?.isAvailable ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+                padding: '4px 8px', 
+                borderRadius: '6px' 
+              }}>
+                {ocrInfo?.isAvailable ? '✓ Available (Tesseract OCR)' : '⚠ Not Installed'}
               </span>
             </div>
 

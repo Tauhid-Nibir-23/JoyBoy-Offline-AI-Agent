@@ -1,4 +1,4 @@
-// Offline Study AI - Local RAG Retriever (Phase 3B Part 5)
+// Offline Study AI - Local RAG Retriever (Phase 3B, Phase 8 & Phase 9)
 import { 
   EmbeddingProvider, 
   RAGChunk, 
@@ -26,10 +26,11 @@ export class LocalRetriever {
   /**
    * Retrieves the most relevant chunks for a user question using cosine similarity
    * over locally stored chunk embeddings in SQLite.
+   * Phase 9: Page-aware matching, neighbor expansion, and table priority.
    */
   public async retrieve(
     query: string,
-    options?: RAGQueryOptions
+    options?: RAGQueryOptions & { targetPage?: number | null }
   ): Promise<RAGSearchResult[]> {
     const trimmed = (typeof query === 'string' ? query : '').trim();
     if (!trimmed) {
@@ -39,6 +40,15 @@ export class LocalRetriever {
     const topK = options?.topK ?? options?.maxResults ?? 3;
     const minSimilarity = options?.minSimilarity ?? 0.08;
     const filterDocIds = options?.filterDocumentIds ? new Set(options.filterDocumentIds) : null;
+
+    // Detect target page from query if not provided
+    let targetPage = options?.targetPage ?? null;
+    if (targetPage === null) {
+      const pageMatch = trimmed.match(/\bpage\s*([0-9]+)\b/i) || trimmed.match(/পৃষ্ঠা\s*([0-9]+)/i);
+      if (pageMatch) {
+        targetPage = parseInt(pageMatch[1], 10);
+      }
+    }
 
     // 1. Generate local embedding vector for user query
     const queryVector = await this.embeddingProvider.embedText(trimmed);
@@ -91,9 +101,20 @@ export class LocalRetriever {
       }
 
       // Hybrid blended score (70% semantic embedding + 30% lexical keyword overlap)
-      const blendedSimilarity = queryWords.length > 0 
+      let blendedSimilarity = queryWords.length > 0 
         ? (0.7 * cosineSim) + (0.3 * keywordScore)
         : cosineSim;
+
+      // Page-aware boosting
+      if (targetPage !== null && chunkRow.page_number === targetPage) {
+        blendedSimilarity = Math.min(1.0, blendedSimilarity + 0.35);
+      }
+
+      // Table boosting if query asks about differences, comparison or tables
+      const isTableQuery = /\b(difference|compare|vs|table|properties|algorithm)\b/i.test(trimmed);
+      if (isTableQuery && chunkRow.text.includes('|')) {
+        blendedSimilarity = Math.min(1.0, blendedSimilarity + 0.15);
+      }
 
       if (blendedSimilarity >= minSimilarity) {
         let metadata: Record<string, unknown> | null = null;
@@ -133,8 +154,55 @@ export class LocalRetriever {
     // 4. Rank by hybrid similarity descending
     results.sort((a, b) => b.similarity - a.similarity);
 
-    // 5. Select top K results (bounded for small local model)
-    return results.slice(0, topK);
+    // 5. Deduplicate identical text chunks
+    const seenTexts = new Set<string>();
+    const deduplicated: RAGSearchResult[] = [];
+    for (const res of results) {
+      const simplified = res.chunk.text.substring(0, 100).trim();
+      if (!seenTexts.has(simplified)) {
+        seenTexts.add(simplified);
+        deduplicated.push(res);
+      }
+    }
+
+    // 6. Neighboring chunk expansion (Part 14)
+    // If top chunk has high relevance and there's room, pull in adjacent chunk from same document
+    const finalResults = deduplicated.slice(0, topK);
+    if (finalResults.length > 0 && finalResults.length < topK + 1) {
+      const topChunk = finalResults[0].chunk;
+      const neighborIdx = topChunk.chunkIndex + 1;
+      const neighborRow = dbChunks.find(
+        (c) => c.document_id === topChunk.documentId && c.chunk_index === neighborIdx
+      );
+
+      if (neighborRow && !finalResults.some((r) => r.chunk.id === neighborRow.id)) {
+        let metadata: Record<string, unknown> | null = null;
+        if (neighborRow.metadata_json) {
+          try { metadata = JSON.parse(neighborRow.metadata_json); } catch {}
+        }
+        finalResults.push({
+          chunk: {
+            id: neighborRow.id,
+            documentId: neighborRow.document_id,
+            chunkIndex: neighborRow.chunk_index,
+            text: neighborRow.text,
+            startOffset: neighborRow.start_offset,
+            endOffset: neighborRow.end_offset,
+            characterCount: neighborRow.character_count,
+            tokenEstimate: neighborRow.token_estimate,
+            heading: neighborRow.heading,
+            pageNumber: neighborRow.page_number,
+            filename: neighborRow.filename,
+            fileType: neighborRow.file_type,
+            metadata,
+            createdAt: neighborRow.created_at
+          },
+          similarity: Math.max(0.1, finalResults[0].similarity * 0.8)
+        });
+      }
+    }
+
+    return finalResults.slice(0, topK);
   }
 }
 

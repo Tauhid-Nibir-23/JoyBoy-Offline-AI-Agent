@@ -1,6 +1,8 @@
+// Offline Study AI - Model Manager (Phase 2A, 8 & 9)
 import { ModelProfile, DiscoveredModelFile, ModelValidationResult } from './types';
-import { INITIAL_REGISTERED_MODELS, BASELINE_MODEL } from './registry';
+import { INITIAL_REGISTERED_MODELS, BASELINE_MODEL, RECOMMENDED_3B_MODEL, FALLBACK_05B_MODEL } from './registry';
 import { getSetting, setSetting } from '../database/db';
+import { modelHardwareEstimator } from './hardwareProfile';
 
 async function tryTauriInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T | null> {
   try {
@@ -86,6 +88,24 @@ export class ModelManager {
     return Array.from(this.registeredModels.values());
   }
 
+  public async listModels(): Promise<ModelProfile[]> {
+    return this.getRegisteredModels();
+  }
+
+  public getInstalledModels(): ModelProfile[] {
+    return this.getRegisteredModels().filter(
+      (m) => m.status === 'Installed' || m.status === 'Ready' || m.status === 'Active'
+    );
+  }
+
+  public getAvailableModels(): ModelProfile[] {
+    return this.getRegisteredModels().filter((m) => m.status === 'Not Installed');
+  }
+
+  public getMissingModels(): ModelProfile[] {
+    return this.getRegisteredModels().filter((m) => m.status === 'Missing');
+  }
+
   public getModelById(id: string): ModelProfile | undefined {
     return this.registeredModels.get(id);
   }
@@ -156,7 +176,6 @@ export class ModelManager {
       }
     }
 
-    // Mock or web preview fallback
     return { isValid: false, fileSizeBytes: 0, format: 'Unknown', error: 'Validation not supported in web browser mode' };
   }
 
@@ -203,7 +222,7 @@ export class ModelManager {
       }
     }
 
-    // 2. Update statuses of registered models
+    // 2. Update statuses of registered models with distinct states
     const activeId = getSetting('model_id');
     for (const [id, model] of this.registeredModels.entries()) {
       const match = discoveredFiles.find(
@@ -219,8 +238,16 @@ export class ModelManager {
           model.status = 'Error';
         }
       } else {
+        // File does not exist on disk
+        const wasConfiguredActive = activeId === id;
+        const hadSavedPath = model.path && model.path.length > 0;
+
+        if (wasConfiguredActive || hadSavedPath) {
+          model.status = 'Missing';
+        } else {
+          model.status = 'Not Installed';
+        }
         model.path = undefined;
-        model.status = 'Not Installed';
       }
     }
 
@@ -253,8 +280,8 @@ export class ModelManager {
     if (active) {
       if (active.status === 'Installed' || active.status === 'Ready') {
         active.status = 'Ready';
-      } else {
-        // If active model is no longer installed or has error, clear active
+      } else if (active.status === 'Not Installed' || active.status === 'Missing') {
+        // Clear active setting if model file was removed
         this.activeModelId = null;
         setSetting('model_id', '');
         setSetting('model_path', '');
@@ -297,6 +324,34 @@ export class ModelManager {
     setSetting('model_name', model.name);
 
     return true;
+  }
+
+  /**
+   * Explicit model installation action (Part 11).
+   * Does NOT auto-download multi-GB files without user action.
+   */
+  public async installModel(modelId: string): Promise<{ success: boolean; message: string }> {
+    const model = this.registeredModels.get(modelId);
+    if (!model) {
+      return { success: false, message: `Model "${modelId}" not found in registry.` };
+    }
+
+    if (model.status === 'Installed' || model.status === 'Ready') {
+      return { success: true, message: `Model "${model.name}" is already installed.` };
+    }
+
+    // Verify hardware safety first
+    const safety = await modelHardwareEstimator.estimateModelSafety(model);
+    if (!safety.isSafeToLoad && safety.warningMessage) {
+      return { success: false, message: safety.warningMessage };
+    }
+
+    // In desktop environment: Guide user or download if requested explicitly
+    const dir = this.getModelDirectory();
+    return {
+      success: true,
+      message: `Place "${model.fileName}" into the "${dir}" folder, then click "Scan Models" or "Use Model".`
+    };
   }
 }
 

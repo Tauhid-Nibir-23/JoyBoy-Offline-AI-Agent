@@ -115,6 +115,16 @@ export interface DBStudyPlan {
   created_at: string;
 }
 
+export interface DBConversationMemory {
+  conversation_id: string;
+  active_topic: string | null;
+  summary: string | null;
+  recent_entities_json: string | null;
+  recent_doc_references_json: string | null;
+  last_qa_snippet: string | null;
+  updated_at: string;
+}
+
 const INITIAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -189,6 +199,18 @@ CREATE TABLE IF NOT EXISTS conversation_documents (
 
 CREATE INDEX IF NOT EXISTS idx_conv_docs_conv ON conversation_documents(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_conv_docs_doc ON conversation_documents(document_id);
+
+-- Phase 9 Conversation Context Memory
+CREATE TABLE IF NOT EXISTS conversation_memories (
+    conversation_id TEXT PRIMARY KEY,
+    active_topic TEXT,
+    summary TEXT,
+    recent_entities_json TEXT,
+    recent_doc_references_json TEXT,
+    last_qa_snippet TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
 
 CREATE TABLE IF NOT EXISTS study_sessions (
     id TEXT PRIMARY KEY,
@@ -383,7 +405,7 @@ export async function initDatabase(): Promise<boolean> {
         `);
       } catch (_) {}
 
-      // Phase 8: Ensure conversation_documents join table exists
+      // Phase 8 & 9: Ensure conversation_documents & conversation_memories exist
       try {
         dbInstance.run(`
           CREATE TABLE IF NOT EXISTS conversation_documents (
@@ -396,13 +418,24 @@ export async function initDatabase(): Promise<boolean> {
           );
           CREATE INDEX IF NOT EXISTS idx_conv_docs_conv ON conversation_documents(conversation_id);
           CREATE INDEX IF NOT EXISTS idx_conv_docs_doc ON conversation_documents(document_id);
+
+          CREATE TABLE IF NOT EXISTS conversation_memories (
+              conversation_id TEXT PRIMARY KEY,
+              active_topic TEXT,
+              summary TEXT,
+              recent_entities_json TEXT,
+              recent_doc_references_json TEXT,
+              last_qa_snippet TEXT,
+              updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+          );
         `);
       } catch (_) {}
 
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
-      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks', 'study_sessions', 'conversation_documents'];
+      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks', 'study_sessions', 'conversation_documents', 'conversation_memories'];
       const missing = requiredTables.filter((t) => !tables.includes(t));
       if (missing.length > 0) {
         throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
@@ -525,7 +558,21 @@ export function updateConversationTitleInDB(id: string, title: string): void {
   );
 }
 
+export function getConversationFromDB(id: string): DBConversation | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM conversations WHERE id = ?', [id]);
+  if (!rows || rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    id: String(r.id),
+    title: String(r.title),
+    created_at: String(r.created_at),
+    updated_at: String(r.updated_at)
+  };
+}
+
 export function deleteConversationFromDB(id: string): void {
+  executeQuery('DELETE FROM conversation_memories WHERE conversation_id = ?', [id]);
   executeQuery('DELETE FROM conversation_documents WHERE conversation_id = ?', [id]);
   executeQuery('DELETE FROM messages WHERE conversation_id = ?', [id]);
   executeQuery('DELETE FROM conversations WHERE id = ?', [id]);
@@ -547,6 +594,8 @@ export function getMessagesByConversationId(conversationId: string): DBMessage[]
     created_at: String(r.created_at)
   }));
 }
+
+export const getMessagesByConversationIdFromDB = getMessagesByConversationId;
 
 export function insertMessageInDB(msg: DBMessage): DBMessage {
   executeQuery(
@@ -881,6 +930,7 @@ export function clearMessagesByConversationId(conversationId: string): void {
 }
 
 export function clearAllConversations(): void {
+  executeQuery('DELETE FROM conversation_memories');
   executeQuery('DELETE FROM conversation_documents');
   executeQuery('DELETE FROM messages');
   executeQuery('DELETE FROM conversations');
@@ -894,6 +944,7 @@ export function clearAllDocuments(): void {
 
 export function clearEntireDatabase(): void {
   if (!dbInstance) return;
+  executeQuery('DELETE FROM conversation_memories');
   executeQuery('DELETE FROM conversation_documents');
   executeQuery('DELETE FROM messages');
   executeQuery('DELETE FROM conversations');
@@ -1171,6 +1222,58 @@ export function getStudyPlanBySessionIdFromDB(sessionId: string): DBStudyPlan | 
     plan_json: String(r.plan_json),
     created_at: String(r.created_at)
   };
+}
+
+// ==========================================
+// Phase 9 Conversation Memory Operations
+// ==========================================
+
+export function getConversationMemoryFromDB(conversationId: string): DBConversationMemory | null {
+  if (!dbInstance) return null;
+  const rows = executeQuery('SELECT * FROM conversation_memories WHERE conversation_id = ?', [conversationId]);
+  if (rows.length === 0) return null;
+  const r = rows[0];
+  return {
+    conversation_id: String(r.conversation_id),
+    active_topic: r.active_topic ? String(r.active_topic) : null,
+    summary: r.summary ? String(r.summary) : null,
+    recent_entities_json: r.recent_entities_json ? String(r.recent_entities_json) : null,
+    recent_doc_references_json: r.recent_doc_references_json ? String(r.recent_doc_references_json) : null,
+    last_qa_snippet: r.last_qa_snippet ? String(r.last_qa_snippet) : null,
+    updated_at: String(r.updated_at)
+  };
+}
+
+export function upsertConversationMemoryInDB(memory: DBConversationMemory): void {
+  if (!dbInstance) return;
+  const now = new Date().toISOString();
+  executeQuery(
+    `INSERT INTO conversation_memories (
+      conversation_id, active_topic, summary, recent_entities_json,
+      recent_doc_references_json, last_qa_snippet, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(conversation_id) DO UPDATE SET
+      active_topic = excluded.active_topic,
+      summary = excluded.summary,
+      recent_entities_json = excluded.recent_entities_json,
+      recent_doc_references_json = excluded.recent_doc_references_json,
+      last_qa_snippet = excluded.last_qa_snippet,
+      updated_at = excluded.updated_at`,
+    [
+      memory.conversation_id,
+      memory.active_topic,
+      memory.summary,
+      memory.recent_entities_json,
+      memory.recent_doc_references_json,
+      memory.last_qa_snippet,
+      now
+    ]
+  );
+}
+
+export function deleteConversationMemoryFromDB(conversationId: string): void {
+  if (!dbInstance) return;
+  executeQuery('DELETE FROM conversation_memories WHERE conversation_id = ?', [conversationId]);
 }
 
 

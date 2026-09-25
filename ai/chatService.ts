@@ -3,6 +3,9 @@ import { MockAIProvider } from './mockProvider';
 import { LlamaCppProvider } from './llamaCppProvider';
 import { ragService } from '../rag';
 import { resolveResponseLanguage, buildLanguageSystemPrompt } from './languageDetector';
+import { conversationMemory } from './conversationMemory';
+import { queryRewriter } from './queryRewriter';
+import { conversationContextManager } from './contextManager';
 import {
   getAllConversations,
   createConversationInDB,
@@ -308,11 +311,15 @@ export class ChatService {
     let promptMsgs = [...messageHistory];
     let ragSystemPrompt: string | undefined;
 
-    // Phase 8: Chat-Scoped Document Filtering & Language Policy
-    const attachedDocIds = getDocumentIdsForConversation(conversationId);
+    // Phase 8 & 9: Chat-Scoped Document Filtering & Language Policy
+    const attachedDocs = getDocumentsForConversation(conversationId);
+    const attachedDocIds = attachedDocs.map((d) => d.id);
     const pref = getSetting('response_language') || 'auto';
     const targetLang = resolveResponseLanguage(userQueryText, pref);
     const langPolicy = buildLanguageSystemPrompt(targetLang);
+
+    // Phase 9 Part 2: Update conversation memory from current state
+    conversationMemory.updateMemory(conversationId, messageHistory, attachedDocs);
 
     // Document Isolation Rule:
     // If conversation has attached documents: retrieve ONLY from those documents.
@@ -333,22 +340,13 @@ export class ChatService {
 
     if (shouldRunRAG) {
       try {
-        // Multi-turn context expansion for follow-up questions
-        let searchQuery = userQueryText;
-        const isFollowUp = userQueryText.length < 40 || 
-          /\b(example|dao|daw|eta|eita|etar|eitar|it|this|that|these|more|mcq)\b/i.test(userQueryText) ||
-          /(?:এটার|এটা|উদাহরণ|আরেকটু)/.test(userQueryText);
-
-        if (isFollowUp) {
-          const priorUserMsgs = messageHistory.filter((m) => m.role === 'user' && m.content !== userQueryText);
-          if (priorUserMsgs.length > 0) {
-            const lastUserText = priorUserMsgs[priorUserMsgs.length - 1].content;
-            searchQuery = `${lastUserText} ${userQueryText}`;
-          }
-        }
+        // Phase 9 Part 3: Smart query rewriting resolving follow-ups, pronouns & active topics
+        const rewritten = queryRewriter.rewriteQuery(conversationId, userQueryText, messageHistory);
+        const searchQuery = rewritten.resolvedQuery;
 
         const ragContext = await ragService.buildContext(searchQuery, {
-          filterDocumentIds: eligibleDocFilter
+          filterDocumentIds: eligibleDocFilter,
+          hasAttachedDocuments: attachedDocs.length > 0
         });
 
         if (ragContext.usedKnowledge && ragContext.sources.length > 0) {
@@ -374,10 +372,15 @@ export class ChatService {
       ragSystemPrompt = `You are an offline personal study assistant. Answer the user's question directly and thoroughly in clear, structured markdown.\n\n${langPolicy}`;
     }
 
-    // Small-model optimization: bound conversation history to recent turns (e.g., last 6 messages)
-    if (promptMsgs.length > 6) {
-      promptMsgs = promptMsgs.slice(-6);
-    }
+    // Phase 9 Part 1: Token-budget-aware context window assembly
+    const assembledContext = conversationContextManager.assembleContext({
+      conversationId,
+      history: promptMsgs,
+      attachedDocs,
+      systemInstruction: ragSystemPrompt,
+      currentUserMessageText: userQueryText
+    });
+    promptMsgs = assembledContext.messages;
 
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
     const provider = await this.resolveProvider();
@@ -452,6 +455,9 @@ export class ChatService {
       sources_json: assistantMsg.sources ? JSON.stringify(assistantMsg.sources) : null,
       created_at: assistantMsg.createdAt
     });
+
+    // Phase 9: Update conversation memory with completed turn
+    conversationMemory.updateMemory(conversationId, [...messageHistory, assistantMsg], attachedDocs);
 
     return assistantMsg;
   }

@@ -1,4 +1,4 @@
-// Offline Study AI - Document Intelligence & OCR Types (Phase 8)
+// Offline Study AI - Document Intelligence & OCR Types (Phase 8 & 9)
 
 export type DocumentQuality = 
   | 'TEXT'
@@ -6,10 +6,27 @@ export type DocumentQuality =
   | 'IMAGE_HEAVY'
   | 'EMPTY_OR_UNREADABLE';
 
+export type PageClassification =
+  | 'TEXT'
+  | 'TEXT_WITH_IMAGE'
+  | 'IMAGE_HEAVY'
+  | 'SCANNED'
+  | 'TABLE_HEAVY';
+
 export interface DocumentStatusBadge {
   label: string;
   type: 'success' | 'warning' | 'info' | 'error';
   message: string;
+}
+
+export interface PageAnalysis {
+  pageNumber: number;
+  classification: PageClassification;
+  characterCount: number;
+  hasTable: boolean;
+  hasDiagramOrImage: boolean;
+  rawText: string;
+  disclaimer?: string;
 }
 
 export interface DocumentAnalysis {
@@ -18,13 +35,30 @@ export interface DocumentAnalysis {
   characterCount: number;
   averageCharsPerPage: number;
   badge: DocumentStatusBadge;
+  pageAnalyses?: PageAnalysis[];
+}
+
+export interface OCREngineInfo {
+  isAvailable: boolean;
+  engineName: string;
+  name?: string;
+  executablePath?: string | null;
+  statusText: string;
 }
 
 export interface OCRProvider {
   readonly id: string;
   readonly name: string;
   isAvailable(): Promise<boolean>;
-  recognize(buffer: ArrayBuffer | Uint8Array): Promise<string>;
+  getEngineInfo(): Promise<OCREngineInfo>;
+  recognize(buffer: ArrayBuffer | Uint8Array, pageNumber?: number): Promise<string>;
+}
+
+export interface LocalVisionProvider {
+  readonly id: string;
+  readonly name: string;
+  isAvailable(): Promise<boolean>;
+  describeImage(imageBuffer: ArrayBuffer | Uint8Array, prompt?: string): Promise<string>;
 }
 
 export interface TextExtractor {

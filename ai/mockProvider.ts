@@ -219,6 +219,68 @@ The system utilizes stratified caching, paging, and demand loading to maximize t
 - B) ২টি
 - C) ৩টি
 - D) ৪টি (Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait) ✓`;
+    } else if (prompt.includes('question 5') || prompt.includes('৫ নম্বর') || prompt.includes('prosno 5') || (prompt.includes('5') && (prompt.includes('explain') || prompt.includes('bujhao')))) {
+      fullText = `### ৫ নম্বর প্রশ্নের বিস্তারিত ব্যাখ্যা:
+
+**প্রশ্ন ৫ ছিল:** "Deadlock সংগঠনের জন্য কয়টি Coffman Conditions একযোগে সত্য হতে হয়?"
+
+#### সঠিক উত্তর:
+**৪টি শর্ত (Coffman Conditions)** সত্য হতে হয়।
+
+#### সহজ ব্যাখ্যা:
+অপারেটিং সিস্টেমে Deadlock সৃষ্টি হতে হলে **Mutual Exclusion**, **Hold and Wait**, **No Preemption**, এবং **Circular Wait**—এই ৪টি শর্তই একসাথে প্রযোজ্য হতে হবে। এর মধ্যে যেকোনো একটি শর্ত যদি আমরা ভেঙে দিতে পারি, তবে সিস্টেমে কখনো Deadlock ঘটবে না (Deadlock Prevention)।`;
+    } else if (prompt.includes('ager answer') || prompt.includes('short koro') || prompt.includes('choto koro') || prompt.includes('আগের উত্তর') || prompt.includes('shorten')) {
+      fullText = `### পূর্ববর্তী উত্তরের সংক্ষিপ্ত রূপ (Quick Summary):
+
+- **Deadlock** হলো এমন অচলাবস্থা যেখানে প্রসেসগুলো একে অপরের রিসোর্সের জন্য অনির্দিষ্টকালের জন্য অপেক্ষা করে।
+- **৪টি মূল শর্ত:** Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait।
+- **প্রতিরোধ:** যেকোনো একটি শর্ত ভঙ্গ করলেই সিস্টেম Deadlock-মুক্ত থাকে।`;
+    } else if (isBanglaOrBanglish && (prompt.includes('easy') || prompt.includes('shohoj') || prompt.includes('সহজ')) && (priorContextText.includes('condition') || priorContextText.includes('deadlock') || prompt.includes('condition') || prompt.includes('deadlock'))) {
+      fullText = `### Deadlock-এর ৪টি শর্ত সহজ ভাষায়:
+
+১. **Mutual Exclusion (একক ব্যবহার):** একটি রিসোর্স (যেমন প্রিন্টার) একবারে কেবল একজনই ব্যবহার করতে পারে।
+২. **Hold and Wait (ধরে রেখে অপেক্ষা):** একটি রিসোর্স ধরে রেখে অন্য রিসোর্সের জন্য হাত বাড়িয়ে বসে থাকা।
+৩. **No Preemption (কেড়ে নেওয়া যাবে না):** জোর করে কারো হাত থেকে রিসোর্স কেড়ে নেওয়া যাবে না; কাজ শেষে নিজ থেকেই ছাড়তে হবে।
+৪. **Circular Wait (চক্রাকার অপেক্ষা):** প্রসেসগুলো গোল বৃত্তের মতো একজন আরেকজনের অপেক্ষায় গোল হয়ে বসে থাকা।`;
+    } else if ((prompt.includes('mcq') || prompt.includes('quiz')) && (priorContextText.includes('chapter 2') || prompt.includes('chapter 2') || prompt.includes('chapter 02') || priorContextText.includes('chapter 02'))) {
+      fullText = `### Chapter 2 থেকে ৫টি গুরুত্বপূর্ণ MCQ:
+
+**১. কোনটি Operating System-এর একটি Core Architecture?**
+- A) Monolithic Kernel ✓
+- B) Simple Cable
+- C) Audio Jack
+- D) RAM Cache
+
+**২. System Call-এর মাধ্যমে কোন মোডে ট্রানজিশন ঘটে?**
+- A) User Mode থেকে Kernel Mode ✓
+- B) Sleep Mode থেকে Hibernate
+- C) GPU Mode থেকে CPU
+- D) BIOS থেকে Monitor
+
+**৩. fork() সিস্টেম কলের কাজ কী?**
+- A) নতুন চাইল্ড প্রসেস তৈরি করা ✓
+- B) কম্পিউটার শাটডাউন করা
+- C) ফাইল ডিলিট করা
+- D) সাউন্ড বাড়ানো
+
+**৪. Microkernel আর্কিটেকচারের সুবিধা কী?**
+- A) মডুলারিটি ও রিলায়েবিলিটি বৃদ্ধি পায় ✓
+- B) কোড সাইজ আনলিমিটেড হয়
+- C) রিস্টার্ট লাগে না
+- D) হার্ডডিস্ক দরকার হয় না
+
+**৫. CLI-এর পূর্ণরূপ কী?**
+- A) Command Line Interface ✓
+- B) Central Log Index
+- C) Core Language Input
+- D) Common Line Instruction`;
+    } else if ((prompt.includes('exam') || prompt.includes('aste pare') || prompt.includes('porikkha')) && (priorContextText.includes('pdf') || priorContextText.includes('topic') || prompt.includes('pdf') || prompt.includes('topic') || sys.includes('attached documents'))) {
+      fullText = `### এই PDF থেকে পরীক্ষায় আসার মতো গুরুত্বপূর্ণ বিষয়সমূহ (Exam Topics):
+
+১. **Deadlock ও Coffman-এর ৪টি শর্ত** (১০ নম্বরের ব্রড প্রশ্ন হিসেবে প্রায়ই আসে)।
+২. **Process Scheduling অ্যালগরিদম** (Round Robin vs SJF-এর পার্থক্য ও Gantt Chart অঙ্কন)।
+৩. **Virtual Memory ও Paging-এর ধারণা** (Page fault এবং TLB-এর গুরুত্ব)।
+৪. **System Calls (fork(), exec())-এর কার্যপদ্ধতি**।`;
     } else if (isBanglaOrBanglish && (prompt.includes('process scheduling') || (prompt.includes('scheduling') && prompt.includes('process')))) {
       fullText = `### Process Scheduling (প্রসেস শিডিউলিং) সহজ ভাষায়:
 

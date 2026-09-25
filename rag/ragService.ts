@@ -140,7 +140,9 @@ export class RAGService {
     options?: RAGQueryOptions
   ): Promise<RAGContextResult> {
     const searchResults = await this.search(userQuestion, options);
-    return this.contextBuilder.buildContext(userQuestion, searchResults);
+    return this.contextBuilder.buildContext(userQuestion, searchResults, {
+      hasAttachedDocuments: options?.hasAttachedDocuments
+    });
   }
 
   /**

@@ -371,6 +371,28 @@ export function MessageComposer({
                 )}
               </div>
             )}
+
+            {/* Document Scoped Badge (Phase 9 Part 18) */}
+            {attachedDocuments.length > 0 && (
+              <span 
+                style={{
+                  fontSize: '11.5px',
+                  color: '#10b981',
+                  backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontWeight: 500
+                }}
+                title={`This conversation is grounded on ${attachedDocuments.length} document${attachedDocuments.length > 1 ? 's' : ''}`}
+              >
+                <Check size={11} strokeWidth={2.5} />
+                <span>Using {attachedDocuments.length} document{attachedDocuments.length > 1 ? 's' : ''}</span>
+              </span>
+            )}
           </div>
 
           {/* Action Button: Send or Stop */}

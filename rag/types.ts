@@ -59,6 +59,14 @@ export interface RAGQueryOptions {
    * Alias for topK
    */
   maxResults?: number;
+  /**
+   * Target specific page if mentioned (Phase 9)
+   */
+  targetPage?: number | null;
+  /**
+   * Whether documents are attached to the current context
+   */
+  hasAttachedDocuments?: boolean;
 }
 
 export interface RAGContextResult {

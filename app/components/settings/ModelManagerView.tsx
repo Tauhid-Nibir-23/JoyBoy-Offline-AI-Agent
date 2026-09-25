@@ -520,7 +520,7 @@ export function ModelManagerView() {
             </h3>
           </div>
           <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-            {models.length} model(s) registered
+            {models.filter(m => m.status === 'Ready' || m.status === 'Installed' || m.status === 'Active').length} installed · {models.filter(m => m.status === 'Not Installed').length} not installed
           </span>
         </div>
 
@@ -531,14 +531,17 @@ export function ModelManagerView() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {models.map((m) => {
-              const isActive = activeModel?.id === m.id && (m.status === 'Ready' || m.status === 'Installed');
-              const isInstalled = m.status === 'Ready' || m.status === 'Installed';
+              const isActive = activeModel?.id === m.id && (m.status === 'Ready' || m.status === 'Installed' || m.status === 'Active');
+              const isInstalled = m.status === 'Ready' || m.status === 'Installed' || m.status === 'Active';
+              const isNotInstalled = m.status === 'Not Installed';
+              const isMissing = m.status === 'Missing';
+
               return (
                 <div
                   key={m.id}
                   style={{
                     backgroundColor: '#090d16',
-                    border: isActive ? '1px solid #10b981' : '1px solid #1e293b',
+                    border: isActive ? '1px solid #10b981' : isNotInstalled ? '1px solid #1e293b' : '1px solid #334155',
                     borderRadius: '8px',
                     padding: '14px 16px',
                     display: 'flex',
@@ -548,8 +551,8 @@ export function ModelManagerView() {
                     gap: '12px'
                   }}
                 >
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ flex: 1, minWidth: '240px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                       <strong style={{ color: '#f8fafc', fontSize: '14px' }}>{m.name}</strong>
                       <span style={{ 
                         fontSize: '11px', 
@@ -560,71 +563,152 @@ export function ModelManagerView() {
                       }}>
                         {m.quantization} · {m.format}
                       </span>
-                      {isActive && (
-                        <span style={{ 
-                          fontSize: '11px', 
-                          padding: '2px 8px', 
-                          borderRadius: '4px', 
-                          backgroundColor: 'rgba(16, 185, 129, 0.2)', 
-                          color: '#6ee7b7',
-                          border: '1px solid #10b981'
+
+                      {/* Hardware / Role Badges */}
+                      {m.isRecommended && (
+                        <span style={{
+                          fontSize: '10.5px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                          color: '#fbbf24',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          fontWeight: 600
                         }}>
-                          ACTIVE
+                          ⭐ RECOMMENDED FOR THIS PC
+                        </span>
+                      )}
+
+                      {m.isFallback && (
+                        <span style={{
+                          fontSize: '10.5px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                          color: '#38bdf8',
+                          border: '1px solid rgba(56, 189, 248, 0.3)',
+                          fontWeight: 600
+                        }}>
+                          FALLBACK (0.5B)
+                        </span>
+                      )}
+
+                      {m.isHeavy && (
+                        <span style={{
+                          fontSize: '10.5px',
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                          color: '#f87171',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          fontWeight: 600
+                        }}>
+                          ⚠ HEAVY (NOT RECOMMENDED)
                         </span>
                       )}
                     </div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-                      File: <code>{m.fileName}</code> {m.path ? `(${m.path})` : '— (File missing in directory)'}
+
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                      {m.description || `Expected size: ${formatBytes(m.expectedSize)} · Recommended RAM: ${m.recommendedRamGb || 8} GB`}
+                    </div>
+
+                    <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '3px' }}>
+                      File: <code>{m.fileName}</code> {m.path ? `(${m.path})` : isMissing ? '— (Previously set file missing)' : '— (Not downloaded)'}
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* Status Badge clearly distinguishing: AVAILABLE, LOADED, NOT FOUND, LOADING, ERROR */}
+                    {/* Status Badge clearly distinguishing: ACTIVE, INSTALLED, NOT INSTALLED, MISSING */}
                     {(() => {
-                      const isLoaded = engineStatus.isServerRunning && activeModel?.id === m.id;
-                      const isLoading = isActionLoading && activeModel?.id === m.id;
-                      let badgeText = 'NOT FOUND';
-                      let badgeBg = 'rgba(100, 116, 139, 0.2)';
-                      let badgeColor = '#94a3b8';
-                      let badgeBorder = '#475569';
-
-                      if (isLoading) {
-                        badgeText = 'LOADING';
-                        badgeBg = 'rgba(245, 158, 11, 0.2)';
-                        badgeColor = '#fde68a';
-                        badgeBorder = '#f59e0b';
-                      } else if (isLoaded) {
-                        badgeText = 'LOADED';
-                        badgeBg = 'rgba(16, 185, 129, 0.2)';
-                        badgeColor = '#6ee7b7';
-                        badgeBorder = '#10b981';
-                      } else if (m.status === 'Error') {
-                        badgeText = 'ERROR';
-                        badgeBg = 'rgba(239, 68, 68, 0.2)';
-                        badgeColor = '#fca5a5';
-                        badgeBorder = '#ef4444';
-                      } else if (isInstalled) {
-                        badgeText = 'AVAILABLE';
-                        badgeBg = 'rgba(59, 130, 246, 0.2)';
-                        badgeColor = '#93c5fd';
-                        badgeBorder = '#3b82f6';
+                      if (isActive) {
+                        return (
+                          <span style={{
+                            padding: '4px 9px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            color: '#6ee7b7',
+                            border: '1px solid #10b981',
+                            letterSpacing: '0.4px'
+                          }}>
+                            ACTIVE
+                          </span>
+                        );
                       }
-
+                      if (isInstalled) {
+                        return (
+                          <span style={{
+                            padding: '4px 9px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                            color: '#93c5fd',
+                            border: '1px solid #3b82f6',
+                            letterSpacing: '0.4px'
+                          }}>
+                            INSTALLED
+                          </span>
+                        );
+                      }
+                      if (isMissing) {
+                        return (
+                          <span style={{
+                            padding: '4px 9px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                            color: '#fca5a5',
+                            border: '1px solid #ef4444',
+                            letterSpacing: '0.4px'
+                          }}>
+                            MISSING
+                          </span>
+                        );
+                      }
                       return (
                         <span style={{
-                          padding: '3px 8px',
+                          padding: '4px 9px',
                           borderRadius: '4px',
                           fontSize: '11px',
-                          fontWeight: 700,
-                          backgroundColor: badgeBg,
-                          color: badgeColor,
-                          border: `1px solid ${badgeBorder}`,
+                          fontWeight: 600,
+                          backgroundColor: 'rgba(100, 116, 139, 0.2)',
+                          color: '#94a3b8',
+                          border: '1px solid #475569',
                           letterSpacing: '0.4px'
                         }}>
-                          {badgeText}
+                          NOT INSTALLED
                         </span>
                       );
                     })()}
+
+                    {/* Action buttons */}
+                    {isNotInstalled && (
+                      <button
+                        onClick={async () => {
+                          const res = await modelManager.installModel(m.id);
+                          setFeedbackMsg({
+                            type: res.success ? 'info' : 'error',
+                            text: res.message
+                          });
+                        }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #f59e0b',
+                          backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                          color: '#fbbf24',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                        title="Install or obtain this model"
+                      >
+                        Install Model
+                      </button>
+                    )}
 
                     {isInstalled && !isActive && (
                       <button
@@ -639,7 +723,7 @@ export function ModelManagerView() {
                           cursor: 'pointer'
                         }}
                       >
-                        Set Active
+                        Use Model
                       </button>
                     )}
 
@@ -657,24 +741,7 @@ export function ModelManagerView() {
                           cursor: 'pointer'
                         }}
                       >
-                        Load
-                      </button>
-                    )}
-
-                    {m.id !== 'qwen3-4b-q4_k_m' && (
-                      <button
-                        onClick={() => handleUnregister(m.id)}
-                        style={{
-                          padding: '6px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #334155',
-                          backgroundColor: 'transparent',
-                          color: '#94a3b8',
-                          fontSize: '12px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        Remove
+                        Load Server
                       </button>
                     )}
                   </div>

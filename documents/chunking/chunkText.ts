@@ -224,6 +224,18 @@ export function chunkDocumentText(
       const primaryHeading = chunkBlocks.find(b => b.heading)?.heading || null;
       const primaryPage = chunkBlocks[0]?.pageNumber || 1;
 
+      const isTable = fullChunkText.includes('|') && fullChunkText.split('\n').filter(l => l.includes('|')).length >= 2;
+      const isOcr = fullChunkText.includes('(OCR Extracted)') || !!(documentMetadata as any)?.isOcr;
+      const isImageHeavy = fullChunkText.length < 160 && (fullChunkText.toLowerCase().includes('diagram') || fullChunkText.toLowerCase().includes('figure') || fullChunkText.toLowerCase().includes('[image]'));
+
+      const chunkMetadata = documentMetadata || {
+        isTable,
+        isOcr,
+        isImageHeavy,
+        source_type: isOcr ? 'ocr' : (isTable ? 'table' : 'native'),
+        pageNumber: primaryPage
+      };
+
       chunks.push({
         id: `${documentId}_chunk_${chunkIndex}`,
         documentId,
@@ -235,7 +247,7 @@ export function chunkDocumentText(
         tokenEstimate: estimateTokenCount(fullChunkText),
         heading: primaryHeading,
         pageNumber: primaryPage,
-        metadata: documentMetadata || null
+        metadata: chunkMetadata
       });
       chunkIndex++;
     }
