@@ -135,11 +135,13 @@ export class DocumentService {
       // Perform local offline text extraction
       try {
         const extraction = await extractDocumentText(fileType, cleanBuffer);
+        const { documentAnalyzer } = await import('./intelligence/documentAnalyzer');
+        const analysis = documentAnalyzer.analyze(filename, fileType, extraction.text, extraction.pageCount);
 
         if (extraction.error && !extraction.text) {
           updateDocumentInDB(docId, {
             extraction_status: 'Failed',
-            error_message: extraction.error,
+            error_message: extraction.error || analysis.badge.message,
             modified_at: new Date().toISOString()
           });
         } else {
@@ -147,7 +149,9 @@ export class DocumentService {
             extraction_status: 'Ready',
             extracted_text: extraction.text,
             character_count: extraction.characterCount,
-            error_message: null,
+            error_message: extraction.characterCount === 0 
+              ? 'No readable text was found in this document. It may be image-based or scanned.' 
+              : analysis.quality === 'OCR_REQUIRED' ? analysis.badge.message : null,
             modified_at: new Date().toISOString()
           });
 

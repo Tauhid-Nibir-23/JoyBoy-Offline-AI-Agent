@@ -2,6 +2,7 @@ import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics, ChatMessag
 import { MockAIProvider } from './mockProvider';
 import { LlamaCppProvider } from './llamaCppProvider';
 import { ragService } from '../rag';
+import { resolveResponseLanguage, buildLanguageSystemPrompt } from './languageDetector';
 import {
   getAllConversations,
   createConversationInDB,
@@ -13,7 +14,13 @@ import {
   clearMessagesByConversationId,
   getSetting,
   setSetting,
+  attachDocumentToConversation,
+  detachDocumentFromConversation,
+  getDocumentIdsForConversation,
+  getAllAttachedDocumentIds,
+  getDocumentsForConversation,
   DBConversation,
+  DBDocument,
   isDatabaseReady,
   initDatabase
 } from '../database/db';
@@ -160,6 +167,27 @@ export class ChatService {
     setSetting('use_study_materials', enabled ? 'true' : 'false');
   }
 
+  // Phase 8: Chat-Scoped Document Methods
+  public getAttachedDocuments(conversationId: string): DBDocument[] {
+    if (!isDatabaseReady()) return [];
+    return getDocumentsForConversation(conversationId);
+  }
+
+  public getAttachedDocumentIds(conversationId: string): string[] {
+    if (!isDatabaseReady()) return [];
+    return getDocumentIdsForConversation(conversationId);
+  }
+
+  public attachDocument(conversationId: string, documentId: string): void {
+    if (!isDatabaseReady()) return;
+    attachDocumentToConversation(conversationId, documentId);
+  }
+
+  public detachDocument(conversationId: string, documentId: string): void {
+    if (!isDatabaseReady()) return;
+    detachDocumentFromConversation(conversationId, documentId);
+  }
+
   public getMessages(conversationId: string): ChatMessage[] {
     if (!isDatabaseReady()) return [];
     const dbMsgs = getMessagesByConversationId(conversationId);
@@ -280,9 +308,49 @@ export class ChatService {
     let promptMsgs = [...messageHistory];
     let ragSystemPrompt: string | undefined;
 
-    if (useRAG) {
+    // Phase 8: Chat-Scoped Document Filtering & Language Policy
+    const attachedDocIds = getDocumentIdsForConversation(conversationId);
+    const pref = getSetting('response_language') || 'auto';
+    const targetLang = resolveResponseLanguage(userQueryText, pref);
+    const langPolicy = buildLanguageSystemPrompt(targetLang);
+
+    // Document Isolation Rule:
+    // If conversation has attached documents: retrieve ONLY from those documents.
+    // If conversation has NO attached documents, but other conversations have attached materials:
+    // do NOT retrieve other conversations' documents (strict chat isolation).
+    // If no conversations have any attached documents (legacy/test fallback): allow unassigned retrieval.
+    let eligibleDocFilter: string[] | undefined = undefined;
+    let shouldRunRAG = useRAG;
+
+    if (attachedDocIds.length > 0) {
+      eligibleDocFilter = attachedDocIds;
+    } else {
+      const allAttached = getAllAttachedDocumentIds();
+      if (allAttached.length > 0) {
+        shouldRunRAG = false;
+      }
+    }
+
+    if (shouldRunRAG) {
       try {
-        const ragContext = await ragService.buildContext(userQueryText);
+        // Multi-turn context expansion for follow-up questions
+        let searchQuery = userQueryText;
+        const isFollowUp = userQueryText.length < 40 || 
+          /\b(example|dao|daw|eta|eita|etar|eitar|it|this|that|these|more|mcq)\b/i.test(userQueryText) ||
+          /(?:এটার|এটা|উদাহরণ|আরেকটু)/.test(userQueryText);
+
+        if (isFollowUp) {
+          const priorUserMsgs = messageHistory.filter((m) => m.role === 'user' && m.content !== userQueryText);
+          if (priorUserMsgs.length > 0) {
+            const lastUserText = priorUserMsgs[priorUserMsgs.length - 1].content;
+            searchQuery = `${lastUserText} ${userQueryText}`;
+          }
+        }
+
+        const ragContext = await ragService.buildContext(searchQuery, {
+          filterDocumentIds: eligibleDocFilter
+        });
+
         if (ragContext.usedKnowledge && ragContext.sources.length > 0) {
           usedSources = ragContext.sources;
           // Substitute the latest user message with augmented prompt containing retrieved chunks
@@ -294,12 +362,21 @@ export class ChatService {
           });
           ragSystemPrompt = ragContext.systemInstruction;
         } else if (ragContext.systemInstruction) {
-          // No relevant document chunks found: instruct model to state so and use local AI knowledge
+          // No relevant document chunks found in this conversation's attached materials
           ragSystemPrompt = ragContext.systemInstruction;
         }
       } catch (ragErr) {
         console.warn('RAG context retrieval failed, proceeding with normal chat:', ragErr);
       }
+    }
+
+    if (!ragSystemPrompt) {
+      ragSystemPrompt = `You are an offline personal study assistant. Answer the user's question directly and thoroughly in clear, structured markdown.\n\n${langPolicy}`;
+    }
+
+    // Small-model optimization: bound conversation history to recent turns (e.g., last 6 messages)
+    if (promptMsgs.length > 6) {
+      promptMsgs = promptMsgs.slice(-6);
     }
 
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)

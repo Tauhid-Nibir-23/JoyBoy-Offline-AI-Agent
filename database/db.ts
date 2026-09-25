@@ -177,6 +177,19 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
 
+-- Phase 8 Chat-Scoped Document Relationship
+CREATE TABLE IF NOT EXISTS conversation_documents (
+    conversation_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    attached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (conversation_id, document_id),
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conv_docs_conv ON conversation_documents(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_conv_docs_doc ON conversation_documents(document_id);
+
 CREATE TABLE IF NOT EXISTS study_sessions (
     id TEXT PRIMARY KEY,
     session_type TEXT NOT NULL,
@@ -370,10 +383,26 @@ export async function initDatabase(): Promise<boolean> {
         `);
       } catch (_) {}
 
+      // Phase 8: Ensure conversation_documents join table exists
+      try {
+        dbInstance.run(`
+          CREATE TABLE IF NOT EXISTS conversation_documents (
+              conversation_id TEXT NOT NULL,
+              document_id TEXT NOT NULL,
+              attached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (conversation_id, document_id),
+              FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+              FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+          );
+          CREATE INDEX IF NOT EXISTS idx_conv_docs_conv ON conversation_documents(conversation_id);
+          CREATE INDEX IF NOT EXISTS idx_conv_docs_doc ON conversation_documents(document_id);
+        `);
+      } catch (_) {}
+
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
-      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks', 'study_sessions'];
+      const requiredTables = ['settings', 'conversations', 'messages', 'documents', 'document_chunks', 'study_sessions', 'conversation_documents'];
       const missing = requiredTables.filter((t) => !tables.includes(t));
       if (missing.length > 0) {
         throw new Error(`Schema verification failed: missing tables [${missing.join(', ')}]`);
@@ -497,6 +526,7 @@ export function updateConversationTitleInDB(id: string, title: string): void {
 }
 
 export function deleteConversationFromDB(id: string): void {
+  executeQuery('DELETE FROM conversation_documents WHERE conversation_id = ?', [id]);
   executeQuery('DELETE FROM messages WHERE conversation_id = ?', [id]);
   executeQuery('DELETE FROM conversations WHERE id = ?', [id]);
 }
@@ -640,6 +670,7 @@ export function updateDocumentInDB(id: string, updates: Partial<DBDocument>): vo
 }
 
 export function deleteDocumentFromDB(id: string): void {
+  executeQuery('DELETE FROM conversation_documents WHERE document_id = ?', [id]);
   executeQuery('DELETE FROM document_chunks WHERE document_id = ?', [id]);
   executeQuery('DELETE FROM documents WHERE id = ?', [id]);
 }
@@ -850,17 +881,20 @@ export function clearMessagesByConversationId(conversationId: string): void {
 }
 
 export function clearAllConversations(): void {
+  executeQuery('DELETE FROM conversation_documents');
   executeQuery('DELETE FROM messages');
   executeQuery('DELETE FROM conversations');
 }
 
 export function clearAllDocuments(): void {
+  executeQuery('DELETE FROM conversation_documents');
   executeQuery('DELETE FROM document_chunks');
   executeQuery('DELETE FROM documents');
 }
 
 export function clearEntireDatabase(): void {
   if (!dbInstance) return;
+  executeQuery('DELETE FROM conversation_documents');
   executeQuery('DELETE FROM messages');
   executeQuery('DELETE FROM conversations');
   executeQuery('DELETE FROM document_chunks');
@@ -868,6 +902,78 @@ export function clearEntireDatabase(): void {
   executeQuery('DELETE FROM settings');
   dbInstance.run(INITIAL_SCHEMA);
   saveDatabase();
+}
+
+// ==========================================
+// Phase 8 Chat-Scoped Document Associations
+// ==========================================
+
+export function attachDocumentToConversation(conversationId: string, documentId: string): void {
+  if (!dbInstance) return;
+  const now = new Date().toISOString();
+  executeQuery(
+    'INSERT OR IGNORE INTO conversation_documents (conversation_id, document_id, attached_at) VALUES (?, ?, ?)',
+    [conversationId, documentId, now]
+  );
+}
+
+export function detachDocumentFromConversation(conversationId: string, documentId: string): void {
+  if (!dbInstance) return;
+  executeQuery(
+    'DELETE FROM conversation_documents WHERE conversation_id = ? AND document_id = ?',
+    [conversationId, documentId]
+  );
+}
+
+export function isDocumentAttachedToConversation(conversationId: string, documentId: string): boolean {
+  if (!dbInstance) return false;
+  const rows = executeQuery(
+    'SELECT 1 FROM conversation_documents WHERE conversation_id = ? AND document_id = ? LIMIT 1',
+    [conversationId, documentId]
+  );
+  return rows.length > 0;
+}
+
+export function getDocumentIdsForConversation(conversationId: string): string[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery(
+    'SELECT document_id FROM conversation_documents WHERE conversation_id = ? ORDER BY attached_at ASC',
+    [conversationId]
+  );
+  return rows.map((r) => String(r.document_id));
+}
+
+export function getAllAttachedDocumentIds(): string[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery('SELECT DISTINCT document_id FROM conversation_documents');
+  return rows.map((r) => String(r.document_id));
+}
+
+export function getDocumentsForConversation(conversationId: string): DBDocument[] {
+  if (!dbInstance) return [];
+  const rows = executeQuery(
+    `SELECT d.* FROM documents d
+     INNER JOIN conversation_documents cd ON cd.document_id = d.id
+     WHERE cd.conversation_id = ?
+     ORDER BY cd.attached_at ASC`,
+    [conversationId]
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    filename: String(r.filename),
+    original_path: r.original_path ? String(r.original_path) : null,
+    file_type: String(r.file_type),
+    file_size: Number(r.file_size || 0),
+    file_hash: String(r.file_hash),
+    imported_at: String(r.imported_at),
+    modified_at: r.modified_at ? String(r.modified_at) : null,
+    extraction_status: r.extraction_status as DBDocument['extraction_status'],
+    extracted_text: r.extracted_text !== null && r.extracted_text !== undefined ? String(r.extracted_text) : null,
+    character_count: Number(r.character_count || 0),
+    indexing_status: (r.indexing_status ? String(r.indexing_status) : 'Ready') as DBDocument['indexing_status'],
+    indexed_at: r.indexed_at ? String(r.indexed_at) : null,
+    error_message: r.error_message ? String(r.error_message) : null
+  }));
 }
 
 export function getChunkCountByDocumentId(documentId: string): number {

@@ -13,14 +13,16 @@ export async function extractPdfFromBuffer(arrayBuffer: ArrayBuffer): Promise<Ex
     }
 
     const uint8 = new Uint8Array(arrayBuffer);
-    const result = await extractText(uint8, { mergePages: true });
+    const result = await extractText(uint8, { mergePages: false });
 
     const resText: any = result.text;
     let rawText = '';
-    if (typeof resText === 'string') {
+    if (Array.isArray(resText)) {
+      rawText = resText
+        .map((pageStr, idx) => `--- Page ${idx + 1} ---\n${String(pageStr).trim()}`)
+        .join('\n\n');
+    } else if (typeof resText === 'string') {
       rawText = resText;
-    } else if (Array.isArray(resText)) {
-      rawText = resText.join('\n\n');
     }
 
     const normalized = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');

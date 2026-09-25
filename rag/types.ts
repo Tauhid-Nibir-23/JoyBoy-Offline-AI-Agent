@@ -32,6 +32,7 @@ export interface RAGSourceCitation {
   filename: string;
   chunkIndex: number;
   heading?: string | null;
+  pageNumber?: number | null;
   similarity: number;
   snippet: string;
 }
@@ -54,6 +55,10 @@ export interface RAGQueryOptions {
    * Optional restriction to specific document IDs
    */
   filterDocumentIds?: string[];
+  /**
+   * Alias for topK
+   */
+  maxResults?: number;
 }
 
 export interface RAGContextResult {

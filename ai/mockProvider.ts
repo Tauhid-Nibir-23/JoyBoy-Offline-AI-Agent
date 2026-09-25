@@ -1,4 +1,5 @@
 import { AIProvider, ChatMessage, GenerateOptions, GenerationMetrics } from './provider';
+import { resolveResponseLanguage } from './languageDetector';
 
 export class MockAIProvider implements AIProvider {
   public id = 'mock';
@@ -17,10 +18,17 @@ export class MockAIProvider implements AIProvider {
 
     const lastUserMsg = [...history].reverse().find((m) => m.role === 'user');
     const prompt = lastUserMsg ? lastUserMsg.content.trim().toLowerCase() : '';
+    const sys = options?.systemPrompt?.toLowerCase() || '';
+
+    // Determine target response language
+    const targetLang = resolveResponseLanguage(lastUserMsg?.content || '', options?.systemPrompt);
+    const isBanglaOrBanglish = targetLang === 'bn' || targetLang === 'banglish' || sys.includes('bengali') || sys.includes('বাংলা');
+
+    // Context from prior turns in this conversation
+    const priorUserMsgs = history.filter(m => m.role === 'user' && m !== lastUserMsg);
+    const priorContextText = priorUserMsgs.map(m => m.content.toLowerCase()).join(' ');
 
     let fullText = '';
-
-    const sys = options?.systemPrompt?.toLowerCase() || '';
 
     if (sys.includes('testing and assessment') || prompt.includes('"type": "mcq"') || prompt.includes('generate quiz') || prompt.includes('questions for the topic:') || (prompt.includes('questions') && prompt.includes('format must be valid json'))) {
       const isTrueFalse = prompt.includes('true_false');
@@ -157,6 +165,95 @@ The system utilizes stratified caching, paging, and demand loading to maximize t
 - Memory abstractions decouple application architecture from hardware limits.
 - Proper scheduling prevents starvation and minimizes latency.
 - Localized indexing enables instantaneous retrieval without cloud dependencies.`;
+    } else if (isBanglaOrBanglish && (prompt.includes('example') || prompt.includes('dao') || prompt.includes('daw') || prompt.includes('উদাহরণ') || prompt.includes('udahar')) && (priorContextText.includes('process') || prompt.includes('process'))) {
+      fullText = `### Process (প্রসেস)-এর বাস্তব উদাহরণ:
+
+একটি সহজ বাস্তব জীবনের উদাহরণ দিলে Process-এর ধারণা পুরোপুরি পরিষ্কার হবে:
+
+মনে করুন, আপনার কম্পিউটারে **VLC Media Player** অথবা **Google Chrome** ইনস্টল করা আছে।
+- যখন এটি বন্ধ অবস্থায় কম্পিউটারের হার্ডডিস্কে বা SSD-তে সেভ করা থাকে, তখন এটি কেবল একটি **Program** (নিষ্ক্রিয় কোড)।
+- কিন্তু যখনই আপনি আইকনে ডাবল ক্লিক করে সেটি ওপেন করেন, অপারেটিং সিস্টেম তাৎক্ষণিকভাবে RAM-এ মেমরি অ্যালোকেট করে এবং CPU এর কোডগুলো রান করাতে শুরু করে—তখনই এটি পরিণত হয় একটি সক্রিয় **Process**-এ।
+
+#### গুরুত্বপূর্ণ পয়েন্ট:
+আপনি যদি একই সাথে দুটি আলাদা উইন্ডোতে দুটি গান চালান, তবে ব্যাকগ্রাউন্ডে একই VLC প্রোগ্রামের **দুটি সম্পূর্ণ স্বাধীন Process** তৈরি হবে এবং প্রত্যেকের আলাদা Process ID (PID) ও মেমরি স্পেস থাকবে।`;
+    } else if (isBanglaOrBanglish && (prompt.includes('example') || prompt.includes('dao') || prompt.includes('daw') || prompt.includes('উদাহরণ') || prompt.includes('udahar')) && (priorContextText.includes('deadlock') || prompt.includes('deadlock'))) {
+      fullText = `### Deadlock-এর বাস্তব উদাহরণ:
+
+একটি সহজ ও ক্লাসিক বাস্তব উদাহরণ হলো **এক লেনের সংকীর্ণ ব্রিজ (Narrow Single-Lane Bridge)**:
+
+- মনে করুন একটি ব্রিজে কেবল একটিমাত্র গাড়ি একবারে যেতে পারে।
+- উত্তর দিক থেকে একটি গাড়ি ব্রিজের মাঝখানে এসে দাঁড়িয়ে গেল।
+- দক্ষিণ দিক থেকেও আরেকটি গাড়ি ব্রিজের মাঝখানে এসে মুখোমুখি দাঁড়িয়ে গেল।
+
+এখন কোনো চালকই গাড়ি পিছিয়ে নিতে প্রস্তুত নয় (**No Preemption**)। প্রত্যেকেই অপর পক্ষ সরে যাওয়ার অপেক্ষা করছে (**Hold and Wait**)। ফলে উভয় গাড়িই ব্রিজে চিরতরে আটকে গেল—এটাই হলো অপারেটিং সিস্টেমের **Deadlock**!`;
+    } else if (isBanglaOrBanglish && (prompt.includes('5 ta mcq') || prompt.includes('5টি mcq') || prompt.includes('mcq daw') || prompt.includes('mcq বানাও') || (prompt.includes('mcq') && (prompt.includes('eta theke') || prompt.includes('এইটা থেকে') || prompt.includes('বানাও'))))) {
+      const topicName = priorContextText.includes('deadlock') ? 'Deadlock' : priorContextText.includes('scheduling') ? 'Process Scheduling' : 'Operating System Process';
+      fullText = `### ${topicName} থেকে ৫টি গুরুত্বপূর্ণ MCQ:
+
+**১. একটি Process বলতে মূলত কী বোঝায়?**
+- A) হার্ডডিস্কে সংরক্ষিত নিষ্ক্রিয় ফাইল
+- B) Program in execution (চলমান প্রোগ্রাম) ✓
+- C) শুধুমাত্র CPU রেজিস্টার
+- D) মাদারবোর্ডের বায়োস কোড
+
+**২. প্রতিটি Process-এর স্টেট ও মেমরি তথ্য কোথায় সংরক্ষিত থাকে?**
+- A) Program Counter (PC)
+- B) Process Control Block (PCB) ✓
+- C) Virtual Bridge
+- D) BIOS
+
+**৩. Process Scheduling-এর মূল উদ্দেশ্য কী?**
+- A) CPU-এর কার্যক্ষমতা ও Utilization সর্বোচ্চ রাখা ✓
+- B) ইন্টারনেটের গতি বৃদ্ধি করা
+- C) হার্ডডিস্ক ফরম্যাট করা
+- D) গ্রাফিক্স কার্ড ওভারক্লক করা
+
+**৪. কোন Scheduling অ্যালগরিদম Time Quantum ব্যবহার করে?**
+- A) First-Come, First-Served (FCFS)
+- B) Shortest Job First (SJF)
+- C) Round Robin (RR) ✓
+- D) Priority Non-preemptive
+
+**৫. Deadlock সংগঠনের জন্য কয়টি Coffman Conditions একযোগে সত্য হতে হয়?**
+- A) ১টি
+- B) ২টি
+- C) ৩টি
+- D) ৪টি (Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait) ✓`;
+    } else if (isBanglaOrBanglish && (prompt.includes('process scheduling') || (prompt.includes('scheduling') && prompt.includes('process')))) {
+      fullText = `### Process Scheduling (প্রসেস শিডিউলিং) সহজ ভাষায়:
+
+অপারেটিং সিস্টেমে যখন একাধিক Process একসাথে চলতে চায়, তখন CPU কোন প্রসেসটিকে আগে সময় দেবে এবং কতক্ষণ চালাবে—সেই সিদ্ধান্ত নেওয়ার প্রক্রিয়াকে **Process Scheduling** বলে। 
+
+CPU যাতে এক মুহূর্তও অলস বসে না থাকে এবং সবগুলো অ্যাপ্লিকেশন সমান সুযোগ পায়, তা নিশ্চিত করাই এর প্রধান কাজ।
+
+#### প্রধান Scheduling অ্যালগরিদমসমূহ:
+1. **First-Come, First-Served (FCFS):** যে প্রসেসটি আগে লাইনে আসবে, CPU তাকেই আগে সার্ভিস দেবে (সাধারণ ব্যাংকের লাইনের মতো)।
+2. **Shortest Job First (SJF):** যে প্রসেসটির রান হতে সবচেয়ে কম সময় লাগবে, সেটি আগে সুযোগ পাবে।
+3. **Round Robin (RR):** প্রতিটি প্রসেসকে একটি নির্দিষ্ট সময়সীমা বা **Time Quantum** (যেমন ১০ মিলিসেকেন্ড) দেওয়া হয়। সময় শেষ হলে পরবর্তী প্রসেসে সুইচ করে।
+4. **Priority Scheduling:** অধিক গুরুত্বপূর্ণ বা উচ্চ অগ্রাধিকারের প্রসেস আগে রান করবে।`;
+    } else if (isBanglaOrBanglish && (prompt.includes('process') || prompt.includes('প্রসেস') || prompt.includes('ki bujhay') || prompt.includes('বলতে কি'))) {
+      fullText = `### Operating System-এ Process (প্রসেস) কী?
+
+সহজ বাংলায়, একটি **Process** হলো একটি প্রোগ্রাম যা বর্তমানে মেমরিতে (RAM) সক্রিয়ভাবে রান বা এক্সিকিউট করছে (**Program in execution**)।
+
+একটি প্রোগ্রাম যখন কম্পিউটারের হার্ডডিস্কে সেভ করা থাকে, তখন সেটি একটি নিষ্ক্রিয় কোড। কিন্তু যখনই অপারেটিং সিস্টেম তাকে মেমরিতে লোড করে এবং CPU তাকে রান করাতে শুরু করে, তখনই সেটি সক্রিয় **Process** হয়।
+
+#### একটি Process-এর প্রধান উপাদানসমূহ:
+1. **Text Section:** প্রসেসটির মূল মেশিন কোড।
+2. **Stack:** ফাংশন প্যারামিটার, লোকাল ভেরিয়েবল এবং রিটার্ন অ্যাড্রেস।
+3. **Data Section:** গ্লোবাল ও স্ট্যাটিক ভেরিয়েবল।
+4. **Heap:** রানটাইমে ডায়নামিকালি মেমরি অ্যালোকশনের জন্য স্পেস।
+5. **PCB (Process Control Block):** প্রতিটি প্রসেসের স্টেট, PID ও CPU রেজিস্টারের তথ্য ধারণকারী ব্লক।`;
+    } else if (isBanglaOrBanglish && prompt.includes('deadlock')) {
+      fullText = `### Operating System-এ Deadlock কী?
+
+**Deadlock** হলো এমন একটি অচলাবস্থা যেখানে দুই বা ততোধিক Process একে অপরের ব্যবহৃত রিসোর্সের জন্য অনির্দিষ্টকালের জন্য অপেক্ষা করতে থাকে, ফলে পুরো সিস্টেম স্থবির হয়ে পড়ে।
+
+#### Deadlock সৃষ্টির ৪টি শর্ত (Coffman Conditions):
+1. **Mutual Exclusion:** রিসোর্সটি একাধিক প্রসেস একসাথে শেয়ার করতে পারে না।
+2. **Hold and Wait:** একটি প্রসেস একটি রিসোর্স ধরে রেখে অন্য প্রসেসের রিসোর্সের জন্য অপেক্ষা করে।
+3. **No Preemption:** জোরপূর্বক কোনো প্রসেসের কাছ থেকে রিসোর্স কেড়ে নেওয়া যায় না।
+4. **Circular Wait:** প্রসেসগুলোর মধ্যে একটি চক্রাকার অপেক্ষার সৃষ্টি হয়।`;
     } else if (prompt.includes('deadlock')) {
       fullText = `### Deadlock in Operating Systems
 
@@ -289,6 +386,19 @@ Think of a computer like a busy restaurant:
 I am here to help you study, review notes, summarize concepts, and solve technical problems completely offline. 
 
 How can I assist your study session today?`;
+    } else if (isBanglaOrBanglish) {
+      fullText = `### পড়ালেখার নোট ও পর্যালোচনা:
+
+আপনার প্রশ্ন: "${lastUserMsg?.content || ''}"।
+
+এখানে বিষয়টি সহজে বুঝার জন্য মূল পয়েন্টগুলো তুলে ধরা হলো:
+
+#### গুরুত্বপূর্ণ বিষয়সমূহ:
+- **মূল ধারণা (Core Concept):** জটিল বিষয়গুলোকে ছোট ছোট সহজ অংশে ভাগ করে বুঝুন।
+- **বাস্তব প্রয়োগ (Application):** বাস্তব উদাহরণ ও কোড দেখে চর্চা করলে সহজে মনে থাকে।
+- **পুনরাবৃত্তি (Active Recall):** পড়ার পর নিজে নিজে প্রশ্ন তৈরি করে বা Flashcard দিয়ে রিভিশন দিন।
+
+আপনার যদি এই বিষয়ে নির্দিষ্ট কোনো উদাহরণ, কোড বা MCQ প্রয়োজন হয়, তবে নিঃসংকোচে বলুন!`;
     } else {
       fullText = `### Study Notes: Explanation & Review
 

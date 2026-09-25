@@ -293,64 +293,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Nav Menu Items */}
-        <nav className="nav-menu">
-          <button 
-            className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
-            onClick={() => setActiveTab('chat')}
-          >
-            <MessageSquare size={16} />
-            <span>Chat</span>
-            {activeTab === 'chat' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'study' ? 'active' : ''}`}
-            onClick={() => setActiveTab('study')}
-          >
-            <GraduationCap size={16} />
-            <span>Study Mode</span>
-            {activeTab === 'study' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
-            onClick={() => setActiveTab('knowledge')}
-          >
-            <Database size={16} />
-            <span>Knowledge Base</span>
-            {activeTab === 'knowledge' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
-            onClick={() => setActiveTab('documents')}
-          >
-            <FileText size={16} />
-            <span>Documents</span>
-            {activeTab === 'documents' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
-            onClick={() => setActiveTab('models')}
-          >
-            <Cpu size={16} />
-            <span>Model Manager</span>
-            {activeTab === 'models' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
-            onClick={() => setActiveTab('settings')}
-          >
-            <SettingsIcon size={16} />
-            <span>Settings</span>
-            {activeTab === 'settings' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
-          </button>
-        </nav>
-
-        {/* Chats Section */}
+        {/* Central Chats Section - Primary Workspace Priority */}
         <div className="chats-section">
           <div className="chats-header">Chats</div>
 
@@ -447,6 +390,28 @@ export default function App() {
           )}
         </div>
 
+        {/* Bottom Utility Menu: Study Mode & Settings */}
+        <div style={{ height: '1px', backgroundColor: 'var(--border-subtle)', margin: '4px 12px' }} />
+        <nav className="nav-menu" style={{ padding: '6px 12px' }}>
+          <button 
+            className={`nav-item ${activeTab === 'study' ? 'active' : ''}`}
+            onClick={() => setActiveTab('study')}
+          >
+            <GraduationCap size={16} />
+            <span>Study Mode</span>
+            {activeTab === 'study' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
+          </button>
+
+          <button 
+            className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            <SettingsIcon size={16} />
+            <span>Settings</span>
+            {activeTab === 'settings' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
+          </button>
+        </nav>
+
         {/* Sidebar Footer Profile */}
         <div className="sidebar-footer">
           <div className="user-avatar">JB</div>
@@ -523,6 +488,7 @@ export default function App() {
               initialConversationId={activeConvId}
               onOpenModelManager={() => setActiveTab('models')}
               onConversationsChange={loadConversations}
+              onNavigateToStudy={handleStudyAction}
             />
           )}
 
@@ -562,6 +528,8 @@ export default function App() {
             <div style={{ padding: '24px' }}>
               <SettingsView 
                 onNavigateToModels={() => setActiveTab('models')} 
+                onNavigateToDocuments={() => setActiveTab('documents')}
+                onNavigateToKnowledge={() => setActiveTab('knowledge')}
                 onThemeChange={(newTheme) => setAppTheme(newTheme)}
               />
             </div>

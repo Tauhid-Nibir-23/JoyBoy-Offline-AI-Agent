@@ -1,8 +1,11 @@
-// Offline Study AI - RAG Context Builder (Phase 3B Part 6 & 9)
+// Offline Study AI - RAG Context Builder (Phase 3B & Phase 8)
 import { RAGSearchResult, RAGSourceCitation, RAGContextResult } from './types';
+import { resolveResponseLanguage, buildLanguageSystemPrompt } from '../ai/languageDetector';
+import { getSetting } from '../database/db';
 
 export interface ContextBuilderOptions {
   maxContextTokens?: number;
+  languagePreference?: string;
 }
 
 export class ContextBuilder {
@@ -10,7 +13,7 @@ export class ContextBuilder {
 
   /**
    * Builds an augmented prompt and source citations from retrieved local chunks.
-   * Tailored for compact context consumption by the local Qwen 2.5 0.5B model.
+   * Tailored for compact context consumption by local Qwen 2.5 3B/GGUF model.
    */
   public buildContext(
     userQuestion: string,
@@ -18,6 +21,9 @@ export class ContextBuilder {
     options?: ContextBuilderOptions
   ): RAGContextResult {
     const maxTokens = options?.maxContextTokens || this.defaultMaxTokens;
+    const pref = options?.languagePreference || getSetting('response_language') || 'auto';
+    const targetLang = resolveResponseLanguage(userQuestion, pref);
+    const langPolicy = buildLanguageSystemPrompt(targetLang);
 
     if (!searchResults || searchResults.length === 0) {
       return {
@@ -25,7 +31,8 @@ export class ContextBuilder {
         sources: [],
         usedKnowledge: false,
         systemInstruction:
-        'You are an offline personal study assistant. If you couldn\'t find relevant information in your imported study materials, note: "No sufficiently relevant material was found in your study documents." and answer helpfully using your general offline knowledge.'
+          'You are an offline personal study assistant. If you couldn\'t find relevant information in your imported study materials, note: "No sufficiently relevant material was found in your study documents." and answer helpfully using your general offline knowledge.\n\n' +
+          langPolicy
       };
     }
 
@@ -40,15 +47,21 @@ export class ContextBuilder {
         filename: chunk.filename,
         chunkIndex: chunk.chunkIndex,
         heading: chunk.heading || null,
+        pageNumber: chunk.pageNumber || null,
         similarity: Math.round(res.similarity * 1000) / 1000,
         snippet: chunk.text.length > 180 ? chunk.text.substring(0, 180).trim() + '...' : chunk.text
       };
       sources.push(citation);
 
-      // Compact header format: [Source: <filename> | Section: <heading>]
-      const header = chunk.heading
-        ? `[Source: ${chunk.filename} | Section: ${chunk.heading}]`
-        : `[Source: ${chunk.filename}]`;
+      // Page-aware header format: [Source: <filename> · Page <p> | Section: <heading>]
+      let header = `[Source: ${chunk.filename}`;
+      if (chunk.pageNumber) {
+        header += ` · Page ${chunk.pageNumber}`;
+      }
+      if (chunk.heading) {
+        header += ` | Section: ${chunk.heading}`;
+      }
+      header += ']';
 
       const sectionText = `${header}\n${chunk.text.trim()}`;
 
@@ -65,7 +78,8 @@ export class ContextBuilder {
 
     const systemInstruction = 
       'You are an offline personal study assistant. Answer the user\'s question using the provided local study materials. ' +
-      'Do not invent facts not supported by the material. If the material does not fully cover the question, clearly state what was found.';
+      'Do not invent facts not supported by the material. If the material does not fully cover the question, clearly state what was found.\n\n' +
+      langPolicy;
 
     const augmentedUserPrompt = 
 `LOCAL STUDY MATERIAL:
@@ -86,3 +100,4 @@ Please provide a clear and direct answer using the local study material above.`;
 }
 
 export const defaultContextBuilder = new ContextBuilder();
+

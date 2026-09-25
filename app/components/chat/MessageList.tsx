@@ -241,6 +241,7 @@ export function MessageList({
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <FileText size={13} style={{ color: '#f59e0b' }} />
                                   <span style={{ color: '#f4f4f5' }}>{s.filename}</span>
+                                  {s.pageNumber ? <span style={{ color: '#fbbf24', fontWeight: 500 }}>· Page {s.pageNumber}</span> : null}
                                   {s.heading && <span style={{ color: '#71717a' }}>· {s.heading}</span>}
                                 </div>
                                 <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 600 }}>

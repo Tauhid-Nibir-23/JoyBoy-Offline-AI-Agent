@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sliders, 
   Palette, 
-  HardDrive, 
-  Activity, 
+  Cpu, 
+  FileText, 
+  ShieldCheck, 
+  Database, 
+  Terminal, 
+  AlertTriangle, 
   CheckCircle2, 
   XCircle, 
-  AlertTriangle, 
   RefreshCw, 
   Trash2, 
-  Cpu, 
-  BookOpen, 
-  ShieldAlert,
-  ChevronDown,
-  ChevronUp
+  ChevronDown, 
+  ChevronUp,
+  Activity,
+  Globe
 } from 'lucide-react';
 import { 
   getSetting, 
@@ -38,27 +39,31 @@ function formatBytes(bytes: number): string {
 
 interface SettingsViewProps {
   onNavigateToModels?: () => void;
+  onNavigateToDocuments?: () => void;
+  onNavigateToKnowledge?: () => void;
   onThemeChange?: (theme: 'default' | 'slate' | 'amber') => void;
 }
 
-export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsViewProps) {
-  const [activeSubTab, setActiveSubTab] = useState<'ai' | 'appearance' | 'storage' | 'diagnostics'>('ai');
+export function SettingsView({ 
+  onNavigateToModels, 
+  onNavigateToDocuments,
+  onNavigateToKnowledge,
+  onThemeChange 
+}: SettingsViewProps) {
+  const [activeSection, setActiveSection] = useState<'general' | 'ai' | 'documents' | 'privacy' | 'data' | 'advanced'>('general');
 
-  // AI Settings State
+  // General State
+  const [theme, setTheme] = useState<'default' | 'slate' | 'amber'>('default');
+  const [responseLanguage, setResponseLanguage] = useState<'auto' | 'bn' | 'en'>('auto');
+
+  // AI Model State
   const [provider, setProvider] = useState<'auto' | 'mock' | 'llamacpp'>('auto');
   const [activeModel, setActiveModel] = useState<ModelProfile | null>(null);
   const [temperature, setTemperature] = useState<number>(0.7);
-  const [maxTokens, setMaxTokens] = useState<number>(512);
   const [contextLength, setContextLength] = useState<number>(4096);
-  const [ragEnabled, setRagEnabled] = useState<boolean>(true);
-  const [ragTopK, setRagTopK] = useState<number>(4);
-  const [ragThreshold, setRagThreshold] = useState<number>(0.25);
+  const [maxTokens, setMaxTokens] = useState<number>(512);
 
-  // Appearance State
-  const [theme, setTheme] = useState<'default' | 'slate' | 'amber'>('default');
-  const [chatDensity, setChatDensity] = useState<'comfortable' | 'compact'>('comfortable');
-
-  // Storage Stats State
+  // Documents State
   const [dbStats, setDbStats] = useState<DatabaseStats>({
     conversationsCount: 0,
     messagesCount: 0,
@@ -67,10 +72,10 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
     databaseSizeBytes: 0
   });
 
-  // Diagnostics State
+  // Advanced State (Collapsed by default)
+  const [isAdvancedExpanded, setIsAdvancedExpanded] = useState<boolean>(false);
   const [diagnosticsReport, setDiagnosticsReport] = useState<DiagnosticsReport | null>(null);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState<boolean>(false);
-  const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
 
   // Confirm Modal / Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -93,22 +98,23 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
     loadAllSettings();
   }, []);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && confirmDialog?.isOpen) {
-        setConfirmDialog(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [confirmDialog]);
-
   const loadAllSettings = () => {
     try {
-      // AI
+      // General
+      const savedTheme = getSetting('app_theme') as any;
+      if (savedTheme === 'default' || savedTheme === 'slate' || savedTheme === 'amber') {
+        setTheme(savedTheme);
+      }
+
+      const savedLang = getSetting('response_language') as any;
+      if (savedLang === 'bn' || savedLang === 'en' || savedLang === 'auto') {
+        setResponseLanguage(savedLang);
+      }
+
+      // AI Model
       setProvider(chatService.getProviderType());
       setActiveModel(modelManager.getActiveModel());
-      
+
       const savedTemp = getSetting('temperature');
       if (savedTemp) setTemperature(parseFloat(savedTemp) || 0.7);
 
@@ -118,21 +124,6 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
       const savedCtx = getSetting('context_length');
       if (savedCtx) setContextLength(parseInt(savedCtx, 10) || 4096);
 
-      setRagEnabled(chatService.isStudyMaterialsEnabled());
-
-      const savedTopK = getSetting('rag_top_k');
-      if (savedTopK) setRagTopK(parseInt(savedTopK, 10) || 4);
-
-      const savedThreshold = getSetting('rag_similarity_threshold');
-      if (savedThreshold) setRagThreshold(parseFloat(savedThreshold) || 0.25);
-
-      // Appearance
-      const savedTheme = getSetting('app_theme') as any;
-      if (savedTheme) setTheme(savedTheme);
-
-      const savedDensity = getSetting('chat_density') as any;
-      if (savedDensity) setChatDensity(savedDensity);
-
       // Storage
       setDbStats(getDatabaseStats());
     } catch (err) {
@@ -140,16 +131,12 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
     }
   };
 
-  const handleSaveAISetting = (key: string, value: string) => {
-    setSetting(key, value);
-    showToast('success', 'Setting saved.');
-  };
-
   const handleRunDiagnostics = async () => {
     setIsRunningDiagnostics(true);
     try {
       const report = await runDiagnostics();
       setDiagnosticsReport(report);
+      showToast('success', `Diagnostics completed: ${report.allPassed ? 'ALL PASSED' : 'ISSUES DETECTED'}`);
     } catch (err: any) {
       showToast('error', 'Diagnostics failed: ' + err.message);
     } finally {
@@ -157,357 +144,102 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
     }
   };
 
-  const toggleDetails = (id: string) => {
-    setExpandedDetails(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '1000px', margin: '0 auto', paddingBottom: '30px' }}>
-      
-      {/* Settings Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#fef3c7', margin: 0 }}>
-            Application Settings
-          </h2>
-          <p style={{ fontSize: '13px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-            Configure offline AI inference, study retrieval, UI density, and local storage.
-          </p>
-        </div>
-      </div>
-
+    <div className="view-content-wrapper" style={{ maxWidth: '880px', margin: '0 auto', padding: '24px 20px' }}>
+      {/* Toast Notification */}
       {toastMessage && (
         <div style={{
-          padding: '10px 14px',
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          backgroundColor: toastMessage.type === 'success' ? '#065f46' : toastMessage.type === 'error' ? '#991b1b' : '#1e3a8a',
+          color: '#ffffff',
+          padding: '10px 16px',
           borderRadius: '8px',
           fontSize: '13px',
-          backgroundColor: toastMessage.type === 'success' ? 'rgba(16, 185, 129, 0.15)' : toastMessage.type === 'error' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(59, 130, 246, 0.15)',
-          border: `1px solid ${toastMessage.type === 'success' ? '#10b981' : toastMessage.type === 'error' ? '#ef4444' : '#3b82f6'}`,
-          color: toastMessage.type === 'success' ? '#6ee7b7' : toastMessage.type === 'error' ? '#fca5a5' : '#93c5fd'
+          fontWeight: 500,
+          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+          zIndex: 9999,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
         }}>
-          {toastMessage.text}
+          {toastMessage.type === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+          <span>{toastMessage.text}</span>
         </div>
       )}
 
-      {/* Settings Tab Selector */}
-      <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #334155', paddingBottom: '10px' }}>
-        <button
-          onClick={() => setActiveSubTab('ai')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            border: activeSubTab === 'ai' ? '1px solid #d97706' : '1px solid transparent',
-            backgroundColor: activeSubTab === 'ai' ? 'rgba(180, 83, 9, 0.3)' : 'transparent',
-            color: activeSubTab === 'ai' ? '#fef3c7' : '#94a3b8',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <Sliders size={16} />
-          <span>AI & Study Settings</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('appearance')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            border: activeSubTab === 'appearance' ? '1px solid #d97706' : '1px solid transparent',
-            backgroundColor: activeSubTab === 'appearance' ? 'rgba(180, 83, 9, 0.3)' : 'transparent',
-            color: activeSubTab === 'appearance' ? '#fef3c7' : '#94a3b8',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <Palette size={16} />
-          <span>Appearance</span>
-        </button>
-
-        <button
-          onClick={() => { setActiveSubTab('storage'); setDbStats(getDatabaseStats()); }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            border: activeSubTab === 'storage' ? '1px solid #d97706' : '1px solid transparent',
-            backgroundColor: activeSubTab === 'storage' ? 'rgba(180, 83, 9, 0.3)' : 'transparent',
-            color: activeSubTab === 'storage' ? '#fef3c7' : '#94a3b8',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <HardDrive size={16} />
-          <span>Storage & Database</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('diagnostics')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '6px',
-            border: activeSubTab === 'diagnostics' ? '1px solid #d97706' : '1px solid transparent',
-            backgroundColor: activeSubTab === 'diagnostics' ? 'rgba(180, 83, 9, 0.3)' : 'transparent',
-            color: activeSubTab === 'diagnostics' ? '#fef3c7' : '#94a3b8',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}
-        >
-          <Activity size={16} />
-          <span>Diagnostics & Health</span>
-        </button>
+      {/* Header */}
+      <div style={{ marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '22px', fontWeight: 700, color: '#f4f4f5', margin: '0 0 6px 0' }}>
+          Settings
+        </h2>
+        <p style={{ fontSize: '13px', color: '#71717a', margin: 0 }}>
+          Manage your personal workspace, local AI model, document processing, and privacy options.
+        </p>
       </div>
 
-      {/* 1. AI Settings Section */}
-      {activeSubTab === 'ai' && (
+      {/* Navigation Sub-Tabs */}
+      <div style={{
+        display: 'flex',
+        gap: '6px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        paddingBottom: '12px',
+        marginBottom: '20px',
+        overflowX: 'auto'
+      }}>
+        {[
+          { id: 'general' as const, label: 'General', icon: Palette },
+          { id: 'ai' as const, label: 'AI Model', icon: Cpu },
+          { id: 'documents' as const, label: 'Documents', icon: FileText },
+          { id: 'privacy' as const, label: 'Privacy', icon: ShieldCheck },
+          { id: 'data' as const, label: 'Data', icon: Database },
+          { id: 'advanced' as const, label: 'Advanced', icon: Terminal }
+        ].map(tab => {
+          const Icon = tab.icon;
+          const isActive = activeSection === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSection(tab.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '7px 14px',
+                borderRadius: '8px',
+                border: isActive ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.06)',
+                backgroundColor: isActive ? 'rgba(245, 158, 11, 0.15)' : '#18181b',
+                color: isActive ? '#fbbf24' : '#a1a1aa',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              <Icon size={14} style={{ color: isActive ? '#f59e0b' : '#71717a' }} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 1. GENERAL SECTION */}
+      {activeSection === 'general' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          <div className="card" style={{ padding: '20px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: '0 0 16px 0' }}>
-              Inference & Model Configuration
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5', margin: '0 0 16px 0' }}>
+              Interface & Appearance
             </h3>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Active Provider */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Active AI Provider</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>Select local llama.cpp or mock offline assistant</div>
-                </div>
-                <select
-                  value={provider}
-                  onChange={(e) => {
-                    const next = e.target.value as any;
-                    setProvider(next);
-                    chatService.setProviderType(next);
-                    showToast('success', `Provider updated to ${next.toUpperCase()}`);
-                  }}
-                  style={{
-                    backgroundColor: '#090d16',
-                    color: '#f8fafc',
-                    border: '1px solid #334155',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    fontSize: '13px'
-                  }}
-                >
-                  <option value="auto">Auto Detect (Recommended)</option>
-                  <option value="llamacpp">Local llama.cpp (Private GGUF)</option>
-                  <option value="mock">Mock Study Assistant (Deterministic)</option>
-                </select>
-              </div>
-
-              {/* Active Model Indicator & Manager Link */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Active Model</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                    {activeModel ? `${activeModel.name} (${activeModel.quantization})` : 'No active model configured'}
-                  </div>
-                </div>
-                {onNavigateToModels && (
-                  <button
-                    onClick={onNavigateToModels}
-                    style={{
-                      padding: '6px 14px',
-                      backgroundColor: '#1e293b',
-                      border: '1px solid #475569',
-                      color: '#f8fafc',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Open Model Manager →
-                  </button>
-                )}
-              </div>
-
-              {/* Temperature Slider */}
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Temperature: {temperature}</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Lower = more focused, Higher = creative</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="1.5"
-                  step="0.05"
-                  value={temperature}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setTemperature(val);
-                    handleSaveAISetting('temperature', String(val));
-                  }}
-                  style={{ width: '100%', accentColor: '#d97706' }}
-                />
-              </div>
-
-              {/* Maximum Output Tokens */}
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Maximum Output Tokens: {maxTokens}</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Max response length generated per request</span>
-                </div>
-                <input
-                  type="range"
-                  min="64"
-                  max="2048"
-                  step="64"
-                  value={maxTokens}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setMaxTokens(val);
-                    handleSaveAISetting('max_tokens', String(val));
-                  }}
-                  style={{ width: '100%', accentColor: '#d97706' }}
-                />
-              </div>
-
-              {/* Context Size */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Context Window Size</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>Total token history bounded context</div>
-                </div>
-                <select
-                  value={contextLength}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setContextLength(val);
-                    handleSaveAISetting('context_length', String(val));
-                  }}
-                  style={{
-                    backgroundColor: '#090d16',
-                    color: '#f8fafc',
-                    border: '1px solid #334155',
-                    borderRadius: '6px',
-                    padding: '6px 12px',
-                    fontSize: '13px'
-                  }}
-                >
-                  <option value={1024}>1024 tokens</option>
-                  <option value={2048}>2048 tokens</option>
-                  <option value={4096}>4096 tokens (Default)</option>
-                  <option value={8192}>8192 tokens</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* RAG Settings Card */}
-          <div className="card" style={{ padding: '20px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: '0 0 16px 0' }}>
-              Study Materials (RAG) Settings
-            </h3>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* RAG Default ON/OFF */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>RAG Enabled by Default</div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8' }}>Automatically use indexed documents for answers</div>
-                </div>
-                <button
-                  onClick={() => {
-                    const next = !ragEnabled;
-                    setRagEnabled(next);
-                    chatService.setStudyMaterialsEnabled(next);
-                    showToast('success', `Study Materials ${next ? 'enabled' : 'disabled'}`);
-                  }}
-                  style={{
-                    padding: '6px 16px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    backgroundColor: ragEnabled ? '#d97706' : '#334155',
-                    color: ragEnabled ? '#fff' : '#94a3b8',
-                    border: 'none'
-                  }}
-                >
-                  {ragEnabled ? 'ON' : 'OFF'}
-                </button>
-              </div>
-
-              {/* Retrieval Top-K */}
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Retrieval Top-K: {ragTopK} chunks</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Number of highest matching excerpts injected into chat</span>
-                </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value={ragTopK}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setRagTopK(val);
-                    handleSaveAISetting('rag_top_k', String(val));
-                  }}
-                  style={{ width: '100%', accentColor: '#d97706' }}
-                />
-              </div>
-
-              {/* Similarity Threshold */}
-              <div style={{ borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Similarity Threshold: {Math.round(ragThreshold * 100)}%</span>
-                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Minimum vector similarity score required for injection</span>
-                </div>
-                <input
-                  type="range"
-                  min="0.0"
-                  max="0.8"
-                  step="0.05"
-                  value={ragThreshold}
-                  onChange={(e) => {
-                    const val = parseFloat(e.target.value);
-                    setRagThreshold(val);
-                    handleSaveAISetting('rag_similarity_threshold', String(val));
-                  }}
-                  style={{ width: '100%', accentColor: '#d97706' }}
-                />
-              </div>
-            </div>
-          </div>
-
-        </div>
-      )}
-
-      {/* 2. Appearance Section */}
-      {activeSubTab === 'appearance' && (
-        <div className="card" style={{ padding: '20px' }}>
-          <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: '0 0 16px 0' }}>
-            Display & Appearance
-          </h3>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Theme Preference */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Theme Picker */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
               <div>
-                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Theme Mode</div>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Select app color theme palette</div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Theme Palette</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Select your preferred desktop look and feel</div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {(['default', 'slate', 'amber'] as const).map((t) => (
+                {(['default', 'slate', 'amber'] as const).map(t => (
                   <button
                     key={t}
                     onClick={() => {
@@ -515,15 +247,14 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
                       setSetting('app_theme', t);
                       window.dispatchEvent(new CustomEvent('app_theme_changed', { detail: t }));
                       onThemeChange?.(t);
-                      const label = t === 'default' ? 'JoyBoy Dark' : t === 'slate' ? 'Cool Slate' : 'Warm Amber';
-                      showToast('success', `Theme set to ${label}`);
+                      showToast('success', `Theme updated`);
                     }}
                     style={{
-                      padding: '6px 14px',
+                      padding: '6px 12px',
                       borderRadius: '6px',
-                      border: theme === t ? '1px solid #d97706' : '1px solid #334155',
-                      backgroundColor: theme === t ? 'rgba(180, 83, 9, 0.4)' : '#090d16',
-                      color: theme === t ? '#fef3c7' : '#94a3b8',
+                      border: theme === t ? '1px solid #f59e0b' : '1px solid #27272a',
+                      backgroundColor: theme === t ? 'rgba(245, 158, 11, 0.2)' : '#09090b',
+                      color: theme === t ? '#fbbf24' : '#a1a1aa',
                       fontSize: '12.5px',
                       cursor: 'pointer'
                     }}
@@ -534,32 +265,42 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
               </div>
             </div>
 
-            {/* Chat Density */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #1e293b', paddingTop: '14px' }}>
+            {/* Response Language Selection */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px' }}>
               <div>
-                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f8fafc' }}>Chat Message Density</div>
-                <div style={{ fontSize: '12px', color: '#94a3b8' }}>Adjust padding and spacing of message bubbles</div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Globe size={14} style={{ color: '#f59e0b' }} />
+                  <span>Response Language</span>
+                </div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>
+                  Automatic language matching for Bangla, Banglish, and English
+                </div>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {(['comfortable', 'compact'] as const).map((d) => (
+                {[
+                  { id: 'auto' as const, label: 'Auto (Default)' },
+                  { id: 'bn' as const, label: 'বাংলা' },
+                  { id: 'en' as const, label: 'English' }
+                ].map(item => (
                   <button
-                    key={d}
+                    key={item.id}
                     onClick={() => {
-                      setChatDensity(d);
-                      setSetting('chat_density', d);
-                      showToast('success', `Density set to ${d}`);
+                      setResponseLanguage(item.id);
+                      setSetting('response_language', item.id);
+                      showToast('success', `Language policy set to ${item.label}`);
                     }}
                     style={{
                       padding: '6px 14px',
                       borderRadius: '6px',
-                      border: chatDensity === d ? '1px solid #d97706' : '1px solid #334155',
-                      backgroundColor: chatDensity === d ? 'rgba(180, 83, 9, 0.4)' : '#090d16',
-                      color: chatDensity === d ? '#fef3c7' : '#94a3b8',
+                      border: responseLanguage === item.id ? '1px solid #f59e0b' : '1px solid #27272a',
+                      backgroundColor: responseLanguage === item.id ? 'rgba(245, 158, 11, 0.2)' : '#09090b',
+                      color: responseLanguage === item.id ? '#fbbf24' : '#a1a1aa',
                       fontSize: '12.5px',
+                      fontWeight: 500,
                       cursor: 'pointer'
                     }}
                   >
-                    {d.charAt(0).toUpperCase() + d.slice(1)}
+                    {item.label}
                   </button>
                 ))}
               </div>
@@ -568,129 +309,312 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
         </div>
       )}
 
-      {/* 3. Storage Section */}
-      {activeSubTab === 'storage' && (
+      {/* 2. AI MODEL SECTION */}
+      {activeSection === 'ai' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          <div className="card" style={{ padding: '20px' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5', margin: '0 0 16px 0' }}>
-              SQLite Local Database Status
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5', margin: '0 0 16px 0' }}>
+              Local Model Configuration
             </h3>
 
-            <div style={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', 
-              gap: '14px' 
-            }}>
-              <div style={{ backgroundColor: '#090d16', padding: '14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Database Engine</span>
+            {/* Installed Model Status */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '16px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Installed Model</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Recommended: Qwen2.5-3B-Instruct GGUF</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '13px', color: '#e4e4e7', fontWeight: 500 }}>
+                  {activeModel?.name || 'Qwen2.5-3B-Instruct (Default)'}
+                </span>
+                {onNavigateToModels && (
+                  <button
+                    onClick={onNavigateToModels}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      backgroundColor: '#27272a',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f59e0b',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Manage
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Model Status */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Model Runtime Status</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Local llama.cpp CPU inference</div>
+              </div>
+              <span style={{
+                color: activeModel?.status === 'Ready' || activeModel?.status === 'Installed' ? '#10b981' : '#f59e0b',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                padding: '4px 10px',
+                borderRadius: '6px'
+              }}>
+                {activeModel?.status || 'Available'}
+              </span>
+            </div>
+
+            {/* Temperature Slider */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Temperature ({temperature})</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Lower values produce more deterministic study answers</div>
+              </div>
+              <input
+                type="range"
+                min="0.1"
+                max="1.0"
+                step="0.05"
+                value={temperature}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  setTemperature(val);
+                  setSetting('temperature', String(val));
+                }}
+                style={{ width: '140px', accentColor: '#f59e0b' }}
+              />
+            </div>
+
+            {/* Context Length */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '16px' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Context Length</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Optimized for 16 GB RAM (4096 tokens recommended)</div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {[2048, 4096, 8192].map(ctx => (
+                  <button
+                    key={ctx}
+                    onClick={() => {
+                      setContextLength(ctx);
+                      setSetting('context_length', String(ctx));
+                      showToast('success', `Context set to ${ctx}`);
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      border: contextLength === ctx ? '1px solid #f59e0b' : '1px solid #27272a',
+                      backgroundColor: contextLength === ctx ? 'rgba(245, 158, 11, 0.2)' : '#09090b',
+                      color: contextLength === ctx ? '#fbbf24' : '#a1a1aa',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {ctx}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. DOCUMENTS SECTION */}
+      {activeSection === 'documents' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5', margin: '0 0 16px 0' }}>
+              Document Intelligence & Storage
+            </h3>
+
+            {/* Storage Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: '#09090b', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <span style={{ fontSize: '11.5px', color: '#71717a' }}>Documents Indexed</span>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f4f4f5', marginTop: '4px' }}>
+                  {dbStats.documentsCount} documents
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#09090b', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <span style={{ fontSize: '11.5px', color: '#71717a' }}>Chunks Generated</span>
+                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f4f4f5', marginTop: '4px' }}>
+                  {dbStats.chunksCount} chunks
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: '#09090b', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <span style={{ fontSize: '11.5px', color: '#71717a' }}>Storage Used</span>
                 <div style={{ fontSize: '16px', fontWeight: 700, color: '#10b981', marginTop: '4px' }}>
-                  {isDatabaseReady() ? 'SQLite 3 (Ready)' : 'Disconnected'}
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#090d16', padding: '14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Conversations</span>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', marginTop: '4px' }}>
-                  {dbStats.conversationsCount} <span style={{ fontSize: '12px', color: '#94a3b8' }}>({dbStats.messagesCount} msgs)</span>
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#090d16', padding: '14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Documents</span>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#f8fafc', marginTop: '4px' }}>
-                  {dbStats.documentsCount}
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#090d16', padding: '14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Indexed Chunks</span>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#fbbf24', marginTop: '4px' }}>
-                  {dbStats.chunksCount}
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: '#090d16', padding: '14px', borderRadius: '8px', border: '1px solid #1e293b' }}>
-                <span style={{ fontSize: '12px', color: '#94a3b8' }}>Estimated DB Size</span>
-                <div style={{ fontSize: '16px', fontWeight: 700, color: '#38bdf8', marginTop: '4px' }}>
                   {formatBytes(dbStats.databaseSizeBytes)}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Danger Zone */}
-          <div className="card" style={{ padding: '20px', border: '1px solid rgba(239, 68, 68, 0.4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <ShieldAlert size={18} style={{ color: '#ef4444' }} />
-              <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#fca5a5', margin: 0 }}>
-                Storage Management & Data Safety
-              </h3>
+            {/* OCR Pipeline Status */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderTop: '1px solid rgba(255, 255, 255, 0.06)', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Local OCR Engine</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Scanned and image-based PDF text detection</div>
+              </div>
+              <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 500, backgroundColor: 'rgba(16, 185, 129, 0.1)', padding: '4px 8px', borderRadius: '6px' }}>
+                ✓ Offline Fallback Active
+              </span>
             </div>
-            <p style={{ fontSize: '12.5px', color: '#94a3b8', margin: '0 0 16px 0' }}>
-              Destructive operations require explicit confirmation. All changes apply locally.
-            </p>
+
+            {/* Chunking Strategy */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '14px', borderBottom: (onNavigateToDocuments || onNavigateToKnowledge) ? '1px solid rgba(255, 255, 255, 0.06)' : 'none', paddingBottom: (onNavigateToDocuments || onNavigateToKnowledge) ? '14px' : 0 }}>
+              <div>
+                <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Chunking Strategy</div>
+                <div style={{ fontSize: '12px', color: '#71717a' }}>Page-aware atomic paragraphs (~400 tokens / 80 token overlap)</div>
+              </div>
+              <span style={{ color: '#fbbf24', fontSize: '12px', fontWeight: 500 }}>
+                Page-Preserving
+              </span>
+            </div>
+
+            {/* Secondary Views Access */}
+            {(onNavigateToDocuments || onNavigateToKnowledge) && (
+              <div style={{ display: 'flex', gap: '10px', paddingTop: '14px' }}>
+                {onNavigateToDocuments && (
+                  <button
+                    onClick={onNavigateToDocuments}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      backgroundColor: '#27272a',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f4f4f5',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Open Document Library
+                  </button>
+                )}
+                {onNavigateToKnowledge && (
+                  <button
+                    onClick={onNavigateToKnowledge}
+                    style={{
+                      padding: '8px 14px',
+                      borderRadius: '6px',
+                      backgroundColor: '#27272a',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f4f4f5',
+                      fontSize: '12.5px',
+                      fontWeight: 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Open Knowledge Base
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4. PRIVACY SECTION */}
+      {activeSection === 'privacy' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5', margin: '0 0 16px 0' }}>
+              Local Privacy & Offline Guarantees
+            </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#090d16', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>Clear All Conversations</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>Delete all chat sessions and messages ({dbStats.conversationsCount} chats)</div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Local-Only Operation</div>
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>All embeddings, inference, documents, and chat history stay on your device</div>
+                </div>
+                <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 600 }}>
+                  Active (Offline)
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Telemetry & Tracking</div>
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>Zero telemetry, zero analytics, zero external network calls</div>
+                </div>
+                <span style={{ color: '#10b981', fontSize: '12px', fontWeight: 600 }}>
+                  Disabled
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. DATA SECTION */}
+      {activeSection === 'data' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#ef4444', margin: '0 0 16px 0' }}>
+              Data & Storage Actions
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Clear All Conversations</div>
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>Delete all chat sessions and messages</div>
                 </div>
                 <button
                   onClick={() => {
                     setConfirmDialog({
                       isOpen: true,
                       title: 'Clear All Conversations?',
-                      message: `This will permanently delete all ${dbStats.conversationsCount} conversation(s) and their message history. This cannot be undone.`,
+                      message: 'This will delete all conversations and messages from local storage. Your documents will remain safe.',
                       onConfirm: () => {
                         clearAllConversations();
                         setDbStats(getDatabaseStats());
-                        showToast('info', 'All conversations have been cleared.');
+                        showToast('success', 'Conversations cleared');
                       }
                     });
                   }}
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid #ef4444',
-                    color: '#fca5a5',
-                    padding: '6px 14px',
+                    padding: '6px 12px',
                     borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
+                    backgroundColor: '#27272a',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5',
+                    fontSize: '12.5px',
                     cursor: 'pointer'
                   }}
                 >
-                  Clear Conversations
+                  Clear Chats
                 </button>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#090d16', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#f8fafc' }}>Clear Indexed Documents</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>Delete all documents and vector chunks ({dbStats.documentsCount} documents)</div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Clear All Documents</div>
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>Remove all imported documents, chunks, and embeddings</div>
                 </div>
                 <button
                   onClick={() => {
                     setConfirmDialog({
                       isOpen: true,
-                      title: 'Clear Indexed Documents?',
-                      message: `This will remove all ${dbStats.documentsCount} document records and ${dbStats.chunksCount} knowledge chunks from the local database.`,
+                      title: 'Clear All Documents?',
+                      message: 'This will delete all imported study documents and vector chunks. Conversations will remain.',
                       onConfirm: () => {
                         clearAllDocuments();
                         setDbStats(getDatabaseStats());
-                        showToast('info', 'All document records have been cleared.');
+                        showToast('success', 'Documents cleared');
                       }
                     });
                   }}
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                    border: '1px solid #ef4444',
-                    color: '#fca5a5',
-                    padding: '6px 14px',
+                    padding: '6px 12px',
                     borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
+                    backgroundColor: '#27272a',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#fca5a5',
+                    fontSize: '12.5px',
                     cursor: 'pointer'
                   }}
                 >
@@ -698,224 +622,189 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
                 </button>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#090d16', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#ef4444' }}>Reset Entire Database</div>
-                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>Wipe all conversations, documents, and settings to clean factory state</div>
+                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f87171' }}>Reset Application</div>
+                  <div style={{ fontSize: '12px', color: '#71717a' }}>Restore default schema, clearing all data</div>
                 </div>
                 <button
                   onClick={() => {
                     setConfirmDialog({
                       isOpen: true,
-                      title: 'Reset Entire Local Database?',
-                      message: 'WARNING: This will wipe all conversations, documents, chunks, and custom settings. The application will be reset to factory defaults.',
+                      title: 'Reset Application?',
+                      message: 'This will reset all conversations, documents, study plans, and preferences to defaults.',
                       onConfirm: () => {
                         clearEntireDatabase();
                         setDbStats(getDatabaseStats());
-                        showToast('info', 'Database reset to clean factory state.');
+                        loadAllSettings();
+                        showToast('success', 'Application reset to factory defaults');
                       }
                     });
                   }}
                   style={{
-                    backgroundColor: '#ef4444',
-                    border: '1px solid #b91c1c',
-                    color: '#ffffff',
-                    padding: '6px 14px',
+                    padding: '6px 12px',
                     borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
+                    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                    border: '1px solid #ef4444',
+                    color: '#fca5a5',
+                    fontSize: '12.5px',
+                    cursor: 'pointer',
+                    fontWeight: 600
                   }}
                 >
-                  Reset Database
+                  Reset All
                 </button>
               </div>
             </div>
           </div>
-
         </div>
       )}
 
-      {/* 4. Diagnostics & Health Check Section */}
-      {activeSubTab === 'diagnostics' && (
+      {/* 6. ADVANCED SECTION (Collapsed by default) */}
+      {activeSection === 'advanced' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#ffedd5', margin: 0 }}>
-                  System Health & Offline Verification
+          <div style={{ backgroundColor: '#18181b', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '12px', padding: '20px' }}>
+            <button
+              onClick={() => setIsAdvancedExpanded(prev => !prev)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                background: 'none',
+                border: 'none',
+                color: '#f4f4f5',
+                cursor: 'pointer',
+                padding: 0
+              }}
+            >
+              <div style={{ textAlign: 'left' }}>
+                <h3 style={{ fontSize: '15px', fontWeight: 600, color: '#f4f4f5', margin: 0 }}>
+                  Technical Diagnostics & Advanced Engine Settings
                 </h3>
-                <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0 0 0' }}>
-                  Verify that SQLite, schema, active model, llama-server, and RAG vector store are functioning properly.
-                </p>
+                <div style={{ fontSize: '12px', color: '#71717a', marginTop: '2px' }}>
+                  Diagnostics, inference provider overrides, and system health checks
+                </div>
               </div>
+              {isAdvancedExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </button>
 
-              <button
-                onClick={handleRunDiagnostics}
-                disabled={isRunningDiagnostics}
-                className="btn btn-primary"
-                style={{
-                  backgroundColor: '#d97706',
-                  color: '#fff',
-                  cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer',
-                  padding: '8px 18px',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  fontWeight: 600
-                }}
-              >
-                <RefreshCw size={14} className={isRunningDiagnostics ? 'animate-spin' : ''} />
-                <span>{isRunningDiagnostics ? 'Testing...' : 'Run Diagnostics'}</span>
-              </button>
-            </div>
-
-            {diagnosticsReport ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{
-                  padding: '10px 14px',
-                  borderRadius: '8px',
-                  backgroundColor: diagnosticsReport.allPassed ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                  border: `1px solid ${diagnosticsReport.allPassed ? '#10b981' : '#f59e0b'}`,
-                  color: diagnosticsReport.allPassed ? '#6ee7b7' : '#fde68a',
-                  fontSize: '13px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {diagnosticsReport.allPassed ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-                    <strong>{diagnosticsReport.allPassed ? 'All System Checks Passed (PASS)' : 'Some Diagnostic Checks Reported Issues'}</strong>
+            {isAdvancedExpanded && (
+              <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/* Provider Override */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '14px', borderBottom: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                  <div>
+                    <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Inference Provider</div>
+                    <div style={{ fontSize: '12px', color: '#71717a' }}>Select engine implementation</div>
                   </div>
-                  <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                    {new Date(diagnosticsReport.timestamp).toLocaleTimeString()}
-                  </span>
+                  <select
+                    value={provider}
+                    onChange={(e) => {
+                      const next = e.target.value as any;
+                      setProvider(next);
+                      chatService.setProviderType(next);
+                      showToast('success', `Provider set to ${next}`);
+                    }}
+                    style={{
+                      backgroundColor: '#09090b',
+                      border: '1px solid #27272a',
+                      color: '#f4f4f5',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      fontSize: '12.5px'
+                    }}
+                  >
+                    <option value="auto">Auto (llama.cpp with mock fallback)</option>
+                    <option value="llamacpp">Local llama.cpp (GGUF)</option>
+                    <option value="mock">Offline Mock Assistant</option>
+                  </select>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
-                  {diagnosticsReport.results.map((check) => {
-                    const isPass = check.status === 'PASS';
-                    const isExpanded = !!expandedDetails[check.id];
+                {/* Diagnostics Runner */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Self-Test Diagnostics</div>
+                      <div style={{ fontSize: '12px', color: '#71717a' }}>Run full SQLite, vector index, and runtime validation</div>
+                    </div>
+                    <button
+                      onClick={handleRunDiagnostics}
+                      disabled={isRunningDiagnostics}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        backgroundColor: '#27272a',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: '#f4f4f5',
+                        borderRadius: '6px',
+                        fontSize: '12.5px',
+                        cursor: isRunningDiagnostics ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <RefreshCw size={12} className={isRunningDiagnostics ? 'animate-spin' : ''} />
+                      <span>{isRunningDiagnostics ? 'Running...' : 'Run Diagnostics'}</span>
+                    </button>
+                  </div>
 
-                    return (
-                      <div
-                        key={check.id}
-                        style={{
-                          backgroundColor: '#090d16',
-                          border: `1px solid ${isPass ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.4)'}`,
-                          borderRadius: '8px',
-                          padding: '12px 16px'
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            {isPass ? (
-                              <CheckCircle2 size={16} style={{ color: '#10b981', flexShrink: 0 }} />
-                            ) : (
-                              <XCircle size={16} style={{ color: '#ef4444', flexShrink: 0 }} />
-                            )}
-                            <div>
-                              <strong style={{ fontSize: '13px', color: '#f8fafc' }}>{check.name}</strong>
-                              <p style={{ fontSize: '12px', color: '#cbd5e1', margin: '2px 0 0 0' }}>{check.summary}</p>
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <span style={{
-                              fontSize: '11px',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              backgroundColor: isPass ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                              color: isPass ? '#6ee7b7' : '#fca5a5'
-                            }}>
-                              {check.status}
-                            </span>
-                            <span style={{ fontSize: '11px', color: '#64748b' }}>{check.durationMs}ms</span>
-                            {check.details && (
-                              <button
-                                onClick={() => toggleDetails(check.id)}
-                                style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                              >
-                                {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {check.details && isExpanded && (
-                          <pre style={{
-                            marginTop: '10px',
-                            padding: '10px',
-                            borderRadius: '6px',
-                            backgroundColor: '#05070e',
-                            border: '1px solid #1e293b',
-                            fontSize: '11.5px',
-                            color: isPass ? '#94a3b8' : '#fca5a5',
-                            whiteSpace: 'pre-wrap',
-                            overflowX: 'auto',
-                            fontFamily: 'monospace'
-                          }}>
-                            {check.details}
-                          </pre>
-                        )}
+                  {diagnosticsReport && (
+                    <div style={{ backgroundColor: '#09090b', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                      <div style={{ fontSize: '12px', color: diagnosticsReport.allPassed ? '#10b981' : '#f59e0b', fontWeight: 600, marginBottom: '6px' }}>
+                        System Status: {diagnosticsReport.allPassed ? 'HEALTHY (ALL PASSED)' : 'ATTENTION REQUIRED'} ({diagnosticsReport.results.filter(r => r.status === 'PASS').length}/{diagnosticsReport.results.length} checks passed)
                       </div>
-                    );
-                  })}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '11.5px', color: '#a1a1aa' }}>
+                        {diagnosticsReport.results.map(c => (
+                          <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>{c.name}:</span>
+                            <span style={{ color: c.status === 'PASS' ? '#10b981' : '#f59e0b' }}>{c.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ) : (
-              <div style={{ textAlign: 'center', padding: '36px 12px', color: '#94a3b8' }}>
-                <Activity size={32} style={{ margin: '0 auto 10px auto', color: '#64748b' }} />
-                <p style={{ fontSize: '13px' }}>Click "Run Diagnostics" to verify all internal offline components.</p>
               </div>
             )}
           </div>
-
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Dialog Modal */}
       {confirmDialog && confirmDialog.isOpen && (
         <div style={{
           position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.75)',
-          backdropFilter: 'blur(4px)',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.7)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 9999
+          zIndex: 10000
         }}>
           <div style={{
-            backgroundColor: '#0f172a',
-            border: '1px solid #ef4444',
+            backgroundColor: '#18181b',
+            border: '1px solid rgba(255,255,255,0.15)',
             borderRadius: '12px',
             padding: '24px',
-            maxWidth: '460px',
-            width: '90%',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)'
+            maxWidth: '420px',
+            width: '90%'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#ef4444', marginBottom: '12px' }}>
-              <AlertTriangle size={24} />
-              <h3 style={{ fontSize: '17px', fontWeight: 700, margin: 0, color: '#fca5a5' }}>
-                {confirmDialog.title}
-              </h3>
-            </div>
-            <p style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: 1.5, margin: '0 0 20px 0' }}>
+            <h3 style={{ margin: '0 0 10px 0', fontSize: '16px', color: '#f4f4f5' }}>{confirmDialog.title}</h3>
+            <p style={{ margin: '0 0 20px 0', fontSize: '13px', color: '#a1a1aa', lineHeight: 1.5 }}>
               {confirmDialog.message}
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
               <button
                 onClick={() => setConfirmDialog(null)}
                 style={{
-                  padding: '8px 16px',
+                  padding: '7px 14px',
                   borderRadius: '6px',
-                  border: '1px solid #475569',
-                  backgroundColor: '#1e293b',
-                  color: '#f8fafc',
+                  backgroundColor: '#27272a',
+                  border: '1px solid #3f3f46',
+                  color: '#f4f4f5',
                   fontSize: '13px',
                   cursor: 'pointer'
                 }}
@@ -928,23 +817,22 @@ export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsView
                   setConfirmDialog(null);
                 }}
                 style={{
-                  padding: '8px 16px',
+                  padding: '7px 14px',
                   borderRadius: '6px',
-                  border: 'none',
                   backgroundColor: '#ef4444',
+                  border: 'none',
                   color: '#ffffff',
                   fontSize: '13px',
                   fontWeight: 600,
                   cursor: 'pointer'
                 }}
               >
-                Confirm & Proceed
+                Confirm
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

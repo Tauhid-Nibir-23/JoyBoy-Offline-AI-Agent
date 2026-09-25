@@ -4,7 +4,9 @@ import { MessageList } from './MessageList';
 import { MessageComposer } from './MessageComposer';
 import { chatService } from '../../../ai/chatService';
 import { ChatMessage } from '../../../ai/provider';
-import { DBConversation } from '../../../database/db';
+import { DBConversation, DBDocument } from '../../../database/db';
+import { documentService } from '../../../documents/documentService';
+import { StudyActionType } from '../../../study/types';
 import { ragService } from '../../../rag';
 import { globalStatus } from '../../../core/status';
 import { modelManager } from '../../../models/manager';
@@ -13,12 +15,14 @@ export interface ChatViewProps {
   initialConversationId?: string | null;
   onOpenModelManager?: () => void;
   onConversationsChange?: () => void;
+  onNavigateToStudy?: (docId: string, action: StudyActionType) => void;
 }
 
 export function ChatView({ 
   initialConversationId, 
   onOpenModelManager,
-  onConversationsChange 
+  onConversationsChange,
+  onNavigateToStudy
 }: ChatViewProps = {}) {
   const [activeId, setActiveId] = useState<string | null>(initialConversationId || null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -28,6 +32,9 @@ export function ChatView({
   const [useStudyMaterials, setUseStudyMaterials] = useState<boolean>(chatService.isStudyMaterialsEnabled());
   const [indexedDocCount, setIndexedDocCount] = useState<number>(0);
   const [isModelInstalled, setIsModelInstalled] = useState<boolean>(false);
+  const [attachedDocs, setAttachedDocs] = useState<DBDocument[]>([]);
+  const [isUploading, setIsUploading] = useState<boolean>(false);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -41,8 +48,10 @@ export function ChatView({
       setActiveId(initialConversationId);
       if (initialConversationId) {
         loadConversationMessages(initialConversationId);
+        loadAttachedDocs(initialConversationId);
       } else {
         setMessages([]);
+        setAttachedDocs([]);
       }
     }
   }, [initialConversationId]);
@@ -62,12 +71,99 @@ export function ChatView({
     }
   };
 
-  const loadConversationMessages = (convId: string) => {
+  const loadConversationMessages = (convId: string | null) => {
+    if (!convId) {
+      setMessages([]);
+      return;
+    }
     try {
       const msgs = chatService.getMessages(convId);
       setMessages(msgs);
+    } catch {
+      setMessages([]);
+    }
+  };
+
+  const loadAttachedDocs = (convId: string | null) => {
+    if (!convId) {
+      setAttachedDocs([]);
+      return;
+    }
+    try {
+      const docs = chatService.getAttachedDocuments(convId);
+      setAttachedDocs(docs);
+    } catch {
+      setAttachedDocs([]);
+    }
+  };
+
+  const handleAttachFile = async (file: File) => {
+    setIsUploading(true);
+    setUploadStatusText(`Extracting ${file.name}...`);
+    try {
+      let targetConvId = activeId;
+      if (!targetConvId) {
+        const cleanName = file.name.replace(/\.[^/.]+$/, '');
+        const newConv = chatService.createConversation(cleanName);
+        targetConvId = newConv.id;
+        setActiveId(targetConvId);
+        onConversationsChange?.();
+      }
+
+      setUploadStatusText(`Indexing ${file.name} for study...`);
+      const importRes = await documentService.importFile(file);
+      if (!importRes.success && !importRes.document) {
+        setErrorMsg(importRes.error || `Failed to process ${file.name}`);
+        return;
+      }
+
+      const doc = importRes.document;
+      if (doc) {
+        chatService.attachDocument(targetConvId, doc.id);
+        loadAttachedDocs(targetConvId);
+        updateRAGStats();
+      }
     } catch (err: any) {
-      setErrorMsg('Failed to load messages: ' + err.message);
+      setErrorMsg('Document error: ' + (err.message || String(err)));
+    } finally {
+      setIsUploading(false);
+      setUploadStatusText('');
+    }
+  };
+
+  const handleDetachDocument = (docId: string) => {
+    if (!activeId) return;
+    chatService.detachDocument(activeId, docId);
+    loadAttachedDocs(activeId);
+    updateRAGStats();
+  };
+
+  const handleTriggerStudyAction = (action: StudyActionType) => {
+    if (onNavigateToStudy) {
+      const docId = attachedDocs.length > 0 ? attachedDocs[0].id : '';
+      onNavigateToStudy(docId, action);
+    } else {
+      const actionPrompts: Record<StudyActionType, string> = {
+        explain: attachedDocs.length > 0 
+          ? `এই ${attachedDocs[0].filename} থেকে মূল বিষয়গুলো সহজ করে বাংলায় বুঝিয়ে দাও।`
+          : 'Please explain the core concepts of our study topic in clear structured markdown.',
+        summarize: attachedDocs.length > 0
+          ? `এই ${attachedDocs[0].filename} ডকুমেন্টটির একটি পূর্ণাঙ্গ সামারি বা সারসংক্ষেপ তৈরি করে দাও।`
+          : 'Please summarize our study topic with key takeaways.',
+        notes: attachedDocs.length > 0
+          ? `এই ${attachedDocs[0].filename} থেকে রিভিশন দেওয়ার মতো স্ট্রাকচার্ড স্টাডি নোট বানিয়ে দাও।`
+          : 'Please generate structured study revision notes with key definitions.',
+        quiz: attachedDocs.length > 0
+          ? `এই ${attachedDocs[0].filename} থেকে ৫টি গুরুত্বপূর্ণ MCQ প্রশ্ন ও উত্তর তৈরি করো।`
+          : 'Please create 5 high-yield multiple choice questions with explanations.',
+        flashcards: attachedDocs.length > 0
+          ? `এই ${attachedDocs[0].filename} থেকে রিভিশন ফ্ল্যাশকার্ড তৈরি করে দাও।`
+          : 'Please create high-yield study flashcards for active recall.',
+        plan: attachedDocs.length > 0
+          ? `এই ${attachedDocs[0].filename} শেষ করার জন্য ৭ দিনের একটি কার্যকরী স্টাডি প্ল্যান তৈরি করো।`
+          : 'Please create an offline study plan schedule.'
+      };
+      handleSendMessage(actionPrompts[action]);
     }
   };
 
@@ -292,6 +388,12 @@ export function ChatView({
         useStudyMaterials={useStudyMaterials}
         onToggleStudyMaterials={toggleStudyMaterials}
         indexedDocCount={indexedDocCount}
+        attachedDocuments={attachedDocs}
+        onAttachFile={handleAttachFile}
+        onDetachDocument={handleDetachDocument}
+        isUploading={isUploading}
+        uploadStatusText={uploadStatusText}
+        onTriggerStudyAction={handleTriggerStudyAction}
       />
     </div>
   );

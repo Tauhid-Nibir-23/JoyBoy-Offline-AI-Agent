@@ -36,7 +36,7 @@ export class LocalRetriever {
       return [];
     }
 
-    const topK = options?.topK ?? 3;
+    const topK = options?.topK ?? options?.maxResults ?? 3;
     const minSimilarity = options?.minSimilarity ?? 0.08;
     const filterDocIds = options?.filterDocumentIds ? new Set(options.filterDocumentIds) : null;
 
@@ -51,7 +51,13 @@ export class LocalRetriever {
 
     const results: RAGSearchResult[] = [];
 
-    // 3. Compute cosine similarity against each chunk
+    // Extract normalized search keywords for hybrid lexical matching
+    const queryWords = trimmed
+      .toLowerCase()
+      .split(/[\s,.;:!?()[\]{}"']+/)
+      .filter((w) => w.length >= 3);
+
+    // 3. Compute hybrid semantic and keyword similarity against each chunk
     for (const chunkRow of dbChunks) {
       if (filterDocIds && !filterDocIds.has(chunkRow.document_id)) {
         continue;
@@ -68,9 +74,28 @@ export class LocalRetriever {
         continue;
       }
 
-      const similarity = this.embeddingProvider.cosineSimilarity(queryVector, chunkVector);
+      const cosineSim = this.embeddingProvider.cosineSimilarity(queryVector, chunkVector);
 
-      if (similarity >= minSimilarity) {
+      // Lexical keyword matching ratio
+      let keywordScore = 0;
+      if (queryWords.length > 0) {
+        const textLower = chunkRow.text.toLowerCase();
+        const headingLower = (chunkRow.heading || '').toLowerCase();
+        let matches = 0;
+        for (const word of queryWords) {
+          if (textLower.includes(word) || headingLower.includes(word)) {
+            matches++;
+          }
+        }
+        keywordScore = matches / queryWords.length;
+      }
+
+      // Hybrid blended score (70% semantic embedding + 30% lexical keyword overlap)
+      const blendedSimilarity = queryWords.length > 0 
+        ? (0.7 * cosineSim) + (0.3 * keywordScore)
+        : cosineSim;
+
+      if (blendedSimilarity >= minSimilarity) {
         let metadata: Record<string, unknown> | null = null;
         if (chunkRow.metadata_json) {
           try {
@@ -100,17 +125,18 @@ export class LocalRetriever {
 
         results.push({
           chunk,
-          similarity
+          similarity: blendedSimilarity
         });
       }
     }
 
-    // 4. Rank by similarity descending
+    // 4. Rank by hybrid similarity descending
     results.sort((a, b) => b.similarity - a.similarity);
 
-    // 5. Select top K results
+    // 5. Select top K results (bounded for small local model)
     return results.slice(0, topK);
   }
 }
 
 export const defaultRetriever = new LocalRetriever();
+export const retriever = defaultRetriever;

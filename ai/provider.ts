@@ -2,6 +2,7 @@ export interface ChatMessageSource {
   documentId: string;
   filename: string;
   chunkIndex: number;
+  pageNumber?: number | null;
   heading?: string | null;
   similarity: number;
   snippet: string;

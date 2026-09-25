@@ -61,6 +61,19 @@ CREATE TABLE IF NOT EXISTS document_chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc_chunk_idx ON document_chunks(document_id, chunk_index);
 
+-- Phase 8 Chat-Scoped Document Relationship
+CREATE TABLE IF NOT EXISTS conversation_documents (
+    conversation_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    attached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (conversation_id, document_id),
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+    FOREIGN KEY(document_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conv_docs_conv ON conversation_documents(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_conv_docs_doc ON conversation_documents(document_id);
+
 -- Phase 5 Study Features Tables
 CREATE TABLE IF NOT EXISTS study_sessions (
     id TEXT PRIMARY KEY,
@@ -128,5 +141,6 @@ INSERT OR IGNORE INTO settings (key, value) VALUES
 ('gpu_layers', '0'),
 ('cpu_threads', '4'),
 ('theme', 'dark'),
+('response_language', 'auto'),
 ('offline_mode', 'true');
 
