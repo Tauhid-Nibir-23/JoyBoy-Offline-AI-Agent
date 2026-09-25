@@ -42,7 +42,7 @@ export function validateResponse(input: ResponseValidationInput): ResponseValida
     };
   }
 
-  // 2. Check for severe repetition (same long line repeated 3+ times)
+  // 2. Check for severe repetition (repeated lines or repeated token loops)
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 25);
   const lineCounts = new Map<string, number>();
   for (const line of lines) {
@@ -56,6 +56,26 @@ export function validateResponse(input: ResponseValidationInput): ResponseValida
         retryNeeded: true,
         correctedInstruction: 'CRITICAL: Do NOT repeat the same sentence or phrase. Provide a concise, non-repetitive response.'
       };
+    }
+  }
+
+  // Token loop check for repetitive single-line generation
+  const words = lower.split(/\s+/).filter(w => w.length > 2);
+  if (words.length >= 10) {
+    const wordCounts = new Map<string, number>();
+    for (const w of words) {
+      wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+    }
+    for (const [w, count] of wordCounts.entries()) {
+      if (count >= 5 && count / words.length > 0.25) {
+        issues.push(`Severe repetition detected: token "${w}" repeated ${count} times in short output`);
+        return {
+          isValid: false,
+          issues,
+          retryNeeded: true,
+          correctedInstruction: 'CRITICAL: Avoid repeated token loops. Answer directly without looping.'
+        };
+      }
     }
   }
 

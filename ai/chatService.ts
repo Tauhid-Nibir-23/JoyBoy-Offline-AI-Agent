@@ -431,6 +431,7 @@ ${langPolicy}`;
     inferenceDiagnostics.record({
       timestamp: new Date().toISOString(),
       modelName: activeModel?.name || (provider.id === 'llamacpp' ? 'Local GGUF' : 'Mock Provider'),
+      modelPath: activeModel?.path,
       providerId: provider.id,
       contextSize: assembledContext.contextTokensEstimate,
       maxTokens: options?.maxTokens || 512,
@@ -446,7 +447,9 @@ ${langPolicy}`;
       intent: rewrittenQueryInfo.intent,
       retrievedChunkCount: usedSources.length,
       documentNames: attachedDocs.map((d) => d.filename),
-      systemPromptPreview: ragSystemPrompt.slice(0, 160) + '...'
+      systemPromptPreview: ragSystemPrompt.slice(0, 160) + '...',
+      isFallback: activeModel?.isFallback || activeModel?.id === 'qwen2.5-0.5b-instruct-q4_k_m',
+      fallbackReason: activeModel?.id === 'qwen2.5-0.5b-instruct-q4_k_m' ? '3B model is not installed or unavailable on disk' : null
     });
 
     let accumulatedText = '';

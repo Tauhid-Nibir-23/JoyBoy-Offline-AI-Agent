@@ -26,7 +26,7 @@ export const RECOMMENDED_3B_MODEL: ModelProfile = {
   status: 'Not Installed',
   recommendedRamGb: 8,
   isRecommended: true,
-  description: 'Recommended for this PC · Better reasoning, better conversation context, better Bengali/Banglish response quality, higher RAM usage than 0.5B.'
+  description: 'Primary model for offline study · Enhanced multi-turn reasoning, grounded document explanations, and natural Bengali/Banglish output.'
 };
 
 export const FALLBACK_05B_MODEL: ModelProfile = {
@@ -41,7 +41,7 @@ export const FALLBACK_05B_MODEL: ModelProfile = {
   status: 'Not Installed',
   recommendedRamGb: 4,
   isFallback: true,
-  description: 'Lightweight, faster, lower memory usage, lower reasoning/context quality. Fallback model.'
+  description: 'Lightweight fallback model · Lower memory footprint and fast inference for resource-constrained sessions.'
 };
 
 export const HEAVY_7B_MODEL: ModelProfile = {

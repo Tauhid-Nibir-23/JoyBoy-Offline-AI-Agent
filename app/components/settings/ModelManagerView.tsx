@@ -722,8 +722,122 @@ export function ModelManagerView() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {/* Status Badge clearly distinguishing: ACTIVE, INSTALLED, NOT INSTALLED, MISSING */}
+                    {/* Status Badge clearly distinguishing Phase 12 Model Roles */}
                     {(() => {
+                      if (m.id === 'qwen2.5-3b-instruct-q4_k_m') {
+                        if (isActive) {
+                          return (
+                            <span style={{
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                              color: '#6ee7b7',
+                              border: '1px solid #10b981',
+                              letterSpacing: '0.4px'
+                            }}>
+                              ACTIVE
+                            </span>
+                          );
+                        }
+                        if (m.status === 'Failed' || m.status === 'Error') {
+                          return (
+                            <span style={{
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                              color: '#fca5a5',
+                              border: '1px solid #ef4444',
+                              letterSpacing: '0.4px'
+                            }}>
+                              FAILED
+                            </span>
+                          );
+                        }
+                        if (isInstalled) {
+                          return (
+                            <span style={{
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                              color: '#93c5fd',
+                              border: '1px solid #3b82f6',
+                              letterSpacing: '0.4px'
+                            }}>
+                              INSTALLED
+                            </span>
+                          );
+                        }
+                        return (
+                          <span style={{
+                            padding: '4px 9px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: 'rgba(100, 116, 139, 0.2)',
+                            color: '#94a3b8',
+                            border: '1px solid #475569',
+                            letterSpacing: '0.4px'
+                          }}>
+                            NOT INSTALLED
+                          </span>
+                        );
+                      }
+
+                      if (m.id === 'qwen2.5-0.5b-instruct-q4_k_m') {
+                        if (isActive) {
+                          return (
+                            <span style={{
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                              color: '#6ee7b7',
+                              border: '1px solid #10b981',
+                              letterSpacing: '0.4px'
+                            }}>
+                              ACTIVE (FALLBACK)
+                            </span>
+                          );
+                        }
+                        if (isInstalled || m.status === 'Fallback') {
+                          return (
+                            <span style={{
+                              padding: '4px 9px',
+                              borderRadius: '4px',
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                              color: '#7dd3fc',
+                              border: '1px solid #0284c7',
+                              letterSpacing: '0.4px'
+                            }}>
+                              FALLBACK
+                            </span>
+                          );
+                        }
+                        return (
+                          <span style={{
+                            padding: '4px 9px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            backgroundColor: 'rgba(100, 116, 139, 0.2)',
+                            color: '#94a3b8',
+                            border: '1px solid #475569',
+                            letterSpacing: '0.4px'
+                          }}>
+                            NOT INSTALLED
+                          </span>
+                        );
+                      }
+
                       if (isActive) {
                         return (
                           <span style={{
@@ -787,6 +901,26 @@ export function ModelManagerView() {
                         </span>
                       );
                     })()}
+
+                    {/* Benchmark Button for Installed Models */}
+                    {isInstalled && (
+                      <button
+                        onClick={handleRunBenchmark}
+                        disabled={benchmarking}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          border: '1px solid #d97706',
+                          backgroundColor: 'rgba(217, 119, 6, 0.15)',
+                          color: '#f59e0b',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {benchmarking ? 'Testing...' : 'Benchmark'}
+                      </button>
+                    )}
 
                     {/* Action buttons */}
                     {isNotInstalled && (

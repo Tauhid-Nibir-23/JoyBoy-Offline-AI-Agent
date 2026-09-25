@@ -8,7 +8,9 @@ export type ModelStatus =
   | 'Unsupported'
   | 'Ready'
   | 'Error'
-  | 'Unavailable';
+  | 'Unavailable'
+  | 'Fallback'
+  | 'Failed';
 
 export type PerformancePreset = 'balanced' | 'precise' | 'creative';
 

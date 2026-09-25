@@ -202,25 +202,32 @@ export class ConversationMemoryManager {
     } else {
       memory.lastAssistantAnswer = content;
       memory.lastAssistantAnswerSnippet = content;
-      memory.lastQuestionsList = this.extractEnumeratedQuestions(content);
+      const newQuestions = this.extractEnumeratedQuestions(content);
+      if (newQuestions.length > 0) {
+        memory.lastQuestionsList = newQuestions;
+      }
       const parsedItems = this.extractEnumeratedItems(content);
 
-      const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
-      for (const it of parsedItems) {
-        itemsRecord[it.number.toString()] = it;
-      }
-      memory.enumeratedItems = itemsRecord;
-
-      const enumRecord: Record<string, string> = {};
-      for (const q of memory.lastQuestionsList) {
-        enumRecord[q.number.toString()] = q.text;
-      }
-      for (const it of parsedItems) {
-        if (!enumRecord[it.number.toString()]) {
-          enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+      if (parsedItems.length > 0) {
+        const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
+        for (const it of parsedItems) {
+          itemsRecord[it.number.toString()] = it;
         }
+        memory.enumeratedItems = itemsRecord;
       }
-      memory.enumeratedQuestions = enumRecord;
+
+      if (parsedItems.length > 0 || newQuestions.length > 0) {
+        const enumRecord: Record<string, string> = { ...memory.enumeratedQuestions };
+        for (const q of memory.lastQuestionsList) {
+          enumRecord[q.number.toString()] = q.text;
+        }
+        for (const it of parsedItems) {
+          if (!enumRecord[it.number.toString()]) {
+            enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+          }
+        }
+        memory.enumeratedQuestions = enumRecord;
+      }
 
       const snippet = content.length > 300 ? content.substring(0, 300) + '...' : content;
       memory.lastQuestionOrAnswerSnippet = JSON.stringify({
@@ -295,25 +302,32 @@ export class ConversationMemoryManager {
       const lastAssistant = assistantMsgs[assistantMsgs.length - 1];
       memory.lastAssistantAnswer = lastAssistant.content;
       memory.lastAssistantAnswerSnippet = lastAssistant.content;
-      memory.lastQuestionsList = this.extractEnumeratedQuestions(lastAssistant.content);
+      const newQuestions = this.extractEnumeratedQuestions(lastAssistant.content);
+      if (newQuestions.length > 0) {
+        memory.lastQuestionsList = newQuestions;
+      }
       const parsedItems = this.extractEnumeratedItems(lastAssistant.content);
 
-      const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
-      for (const it of parsedItems) {
-        itemsRecord[it.number.toString()] = it;
-      }
-      memory.enumeratedItems = itemsRecord;
-
-      const enumRecord: Record<string, string> = {};
-      for (const q of memory.lastQuestionsList) {
-        enumRecord[q.number.toString()] = q.text;
-      }
-      for (const it of parsedItems) {
-        if (!enumRecord[it.number.toString()]) {
-          enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+      if (parsedItems.length > 0) {
+        const itemsRecord: Record<string, ExtractedEnumeratedItem> = {};
+        for (const it of parsedItems) {
+          itemsRecord[it.number.toString()] = it;
         }
+        memory.enumeratedItems = itemsRecord;
       }
-      memory.enumeratedQuestions = enumRecord;
+
+      if (parsedItems.length > 0 || newQuestions.length > 0) {
+        const enumRecord: Record<string, string> = { ...memory.enumeratedQuestions };
+        for (const q of memory.lastQuestionsList) {
+          enumRecord[q.number.toString()] = q.text;
+        }
+        for (const it of parsedItems) {
+          if (!enumRecord[it.number.toString()]) {
+            enumRecord[it.number.toString()] = it.title ? `${it.title}: ${it.text}` : it.text;
+          }
+        }
+        memory.enumeratedQuestions = enumRecord;
+      }
       
       const snippet = lastAssistant.content.length > 300 
         ? lastAssistant.content.substring(0, 300) + '...'
@@ -435,7 +449,17 @@ export class ConversationMemoryManager {
         entities: ['process', 'thread', 'PCB', 'context switch', 'fork()', 'exec()']
       },
       {
-        pattern: /\b(virtual\s+memory|paging|page\s+fault|tlb|segmentation|memory\s+management)\b/i,
+        pattern: /\bpaging\b/i,
+        topic: 'Paging',
+        entities: ['paging', 'page table', 'page fault', 'frames', 'virtual address', 'MMU']
+      },
+      {
+        pattern: /\bvirtual\s+memory\b/i,
+        topic: 'Virtual Memory',
+        entities: ['virtual memory', 'paging', 'page fault', 'TLB', 'MMU', 'frames']
+      },
+      {
+        pattern: /\b(page\s+fault|tlb|segmentation|memory\s+management)\b/i,
         topic: 'Memory Management',
         entities: ['virtual memory', 'paging', 'page fault', 'TLB', 'MMU', 'frames']
       },
@@ -450,13 +474,16 @@ export class ConversationMemoryManager {
       if (item.pattern.test(lower)) {
         if (memory.activeTopic && memory.activeTopic !== item.topic) {
           memory.previousTopic = memory.activeTopic;
-        }
-        memory.activeTopic = item.topic;
-        for (const e of item.entities) {
-          if (!memory.recentEntities.includes(e)) {
-            memory.recentEntities.push(e);
+          memory.activeSubtopic = null;
+          memory.recentEntities = [...item.entities];
+        } else {
+          for (const e of item.entities) {
+            if (!memory.recentEntities.includes(e)) {
+              memory.recentEntities.push(e);
+            }
           }
         }
+        memory.activeTopic = item.topic;
         return;
       }
     }
@@ -470,11 +497,14 @@ export class ConversationMemoryManager {
       if (topicCandidate.length > 2 && topicCandidate.length < 50) {
         if (memory.activeTopic && memory.activeTopic !== topicCandidate) {
           memory.previousTopic = memory.activeTopic;
+          memory.activeSubtopic = null;
+          memory.recentEntities = [topicCandidate];
+        } else {
+          if (!memory.recentEntities.includes(topicCandidate)) {
+            memory.recentEntities.push(topicCandidate);
+          }
         }
         memory.activeTopic = topicCandidate;
-        if (!memory.recentEntities.includes(topicCandidate)) {
-          memory.recentEntities.push(topicCandidate);
-        }
       }
     }
   }

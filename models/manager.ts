@@ -1,5 +1,5 @@
 // Offline Study AI - Model Manager (Phase 2A, 8 & 9)
-import { ModelProfile, DiscoveredModelFile, ModelValidationResult } from './types';
+import { ModelProfile, DiscoveredModelFile, ModelValidationResult, ModelStatus } from './types';
 import { INITIAL_REGISTERED_MODELS, BASELINE_MODEL, RECOMMENDED_3B_MODEL, FALLBACK_05B_MODEL } from './registry';
 import { getSetting, setSetting } from '../database/db';
 import { modelHardwareEstimator } from './hardwareProfile';
@@ -225,9 +225,17 @@ export class ModelManager {
     // 2. Update statuses of registered models with distinct states
     const activeId = getSetting('model_id');
     for (const [id, model] of this.registeredModels.entries()) {
-      const match = discoveredFiles.find(
-        (d) => d.fileName.toLowerCase() === model.fileName.toLowerCase()
-      );
+      const match = discoveredFiles.find((d) => {
+        if (d.fileName.toLowerCase() === model.fileName.toLowerCase()) return true;
+        // Flexible filename matching for 3B and 0.5B (Phase 12 Section 2)
+        if (model.id === RECOMMENDED_3B_MODEL.id) {
+          return /qwen.*2\.5.*3b.*instruct/i.test(d.fileName) || /qwen2\.5[-_]3b/i.test(d.fileName);
+        }
+        if (model.id === FALLBACK_05B_MODEL.id) {
+          return /qwen.*2\.5.*0\.5b.*instruct/i.test(d.fileName) || /qwen2\.5[-_]0\.5b/i.test(d.fileName);
+        }
+        return false;
+      });
 
       if (match) {
         if (match.isValidGguf && match.sizeBytes > 0) {
@@ -280,6 +288,10 @@ export class ModelManager {
     if (active) {
       if (active.status === 'Installed' || active.status === 'Ready') {
         active.status = 'Ready';
+        if (active.id === RECOMMENDED_3B_MODEL.id) {
+          const model05B = this.registeredModels.get(FALLBACK_05B_MODEL.id);
+          if (model05B && model05B.path) model05B.status = 'Fallback';
+        }
       } else if (active.status === 'Not Installed' || active.status === 'Missing') {
         // Clear active setting if model file was removed
         this.activeModelId = null;
@@ -289,6 +301,108 @@ export class ModelManager {
     }
 
     return this.getRegisteredModels();
+  }
+
+  public async autoSelectModel(): Promise<ModelProfile | null> {
+    const model3B = this.registeredModels.get(RECOMMENDED_3B_MODEL.id);
+    const model05B = this.registeredModels.get(FALLBACK_05B_MODEL.id);
+
+    // 1. Try 3B primary model first
+    if (model3B && model3B.path && (model3B.status === 'Installed' || model3B.status === 'Ready' || model3B.status === 'Active')) {
+      const validation = await this.validateModelFile(model3B.path);
+      if (validation.isValid) {
+        await this.selectActiveModel(model3B.id);
+        if (model05B && model05B.path) {
+          model05B.status = 'Fallback';
+        }
+        return model3B;
+      } else {
+        model3B.status = 'Failed';
+      }
+    }
+
+    // 2. Fall back to 0.5B lightweight model
+    if (model05B && model05B.path && (model05B.status === 'Installed' || model05B.status === 'Ready' || model05B.status === 'Fallback')) {
+      const validation = await this.validateModelFile(model05B.path);
+      if (validation.isValid) {
+        await this.selectActiveModel(model05B.id);
+        return model05B;
+      } else {
+        model05B.status = 'Error';
+      }
+    }
+
+    return this.getActiveModel();
+  }
+
+  public async checkModelHealth(modelId: string): Promise<{
+    healthy: boolean;
+    status: ModelStatus;
+    message: string;
+    details?: {
+      fileSizeBytes?: number;
+      isSafeToLoad?: boolean;
+      warning?: string;
+    };
+  }> {
+    const model = this.registeredModels.get(modelId);
+    if (!model) {
+      return { healthy: false, status: 'Not Installed', message: `Model "${modelId}" is not in registry.` };
+    }
+    if (!model.path) {
+      return { healthy: false, status: 'Not Installed', message: `Model file "${model.fileName}" is not found on disk.` };
+    }
+    const validation = await this.validateModelFile(model.path);
+    if (!validation.isValid) {
+      model.status = 'Failed';
+      return { healthy: false, status: 'Failed', message: validation.error || 'Invalid GGUF binary format.' };
+    }
+    const safety = await modelHardwareEstimator.estimateModelSafety(model);
+    if (!safety.isSafeToLoad) {
+      return {
+        healthy: false,
+        status: 'Error',
+        message: safety.warningMessage || 'Insufficient RAM to load model safely on this laptop.',
+        details: { isSafeToLoad: false, warning: safety.warningMessage }
+      };
+    }
+    return {
+      healthy: true,
+      status: model.id === this.activeModelId ? 'Ready' : 'Installed',
+      message: `${model.name} passed health check and is ready for inference.`,
+      details: {
+        fileSizeBytes: validation.fileSizeBytes,
+        isSafeToLoad: true,
+        warning: safety.warningMessage
+      }
+    };
+  }
+
+  public getActiveModelRole(): {
+    activeModelId: string | null;
+    is3BActive: boolean;
+    is05BFallbackActive: boolean;
+    statusSummary: string;
+  } {
+    const active = this.getActiveModel();
+    const is3B = active?.id === RECOMMENDED_3B_MODEL.id;
+    const is05B = active?.id === FALLBACK_05B_MODEL.id;
+
+    let statusSummary = 'No model selected';
+    if (is3B) {
+      statusSummary = 'Qwen 2.5 3B (Primary Active Model)';
+    } else if (is05B) {
+      statusSummary = 'Qwen 2.5 0.5B (Lightweight Fallback Active)';
+    } else if (active) {
+      statusSummary = `${active.name} (Active)`;
+    }
+
+    return {
+      activeModelId: this.activeModelId,
+      is3BActive: is3B,
+      is05BFallbackActive: is05B,
+      statusSummary
+    };
   }
 
   public async selectActiveModel(modelId: string): Promise<boolean> {
@@ -311,10 +425,14 @@ export class ModelManager {
     this.activeModelId = model.id;
     model.status = 'Ready';
 
-    // Update other models to Installed if they were Ready
+    // Update other models to Installed/Fallback if they were Ready
     for (const [id, m] of this.registeredModels.entries()) {
-      if (id !== modelId && m.status === 'Ready') {
-        m.status = 'Installed';
+      if (id !== modelId) {
+        if (id === FALLBACK_05B_MODEL.id && m.path) {
+          m.status = 'Fallback';
+        } else if (m.status === 'Ready' || m.status === 'Active') {
+          m.status = 'Installed';
+        }
       }
     }
 
@@ -336,7 +454,7 @@ export class ModelManager {
       return { success: false, message: `Model "${modelId}" not found in registry.` };
     }
 
-    if (model.status === 'Installed' || model.status === 'Ready') {
+    if (model.status === 'Installed' || model.status === 'Ready' || model.status === 'Fallback') {
       return { success: true, message: `Model "${model.name}" is already installed.` };
     }
 
