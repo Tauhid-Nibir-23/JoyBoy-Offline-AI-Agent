@@ -38,9 +38,10 @@ function formatBytes(bytes: number): string {
 
 interface SettingsViewProps {
   onNavigateToModels?: () => void;
+  onThemeChange?: (theme: 'default' | 'slate' | 'amber') => void;
 }
 
-export function SettingsView({ onNavigateToModels }: SettingsViewProps) {
+export function SettingsView({ onNavigateToModels, onThemeChange }: SettingsViewProps) {
   const [activeSubTab, setActiveSubTab] = useState<'ai' | 'appearance' | 'storage' | 'diagnostics'>('ai');
 
   // AI Settings State
@@ -512,7 +513,10 @@ export function SettingsView({ onNavigateToModels }: SettingsViewProps) {
                     onClick={() => {
                       setTheme(t);
                       setSetting('app_theme', t);
-                      showToast('success', `Theme set to ${t}`);
+                      window.dispatchEvent(new CustomEvent('app_theme_changed', { detail: t }));
+                      onThemeChange?.(t);
+                      const label = t === 'default' ? 'JoyBoy Dark' : t === 'slate' ? 'Cool Slate' : 'Warm Amber';
+                      showToast('success', `Theme set to ${label}`);
                     }}
                     style={{
                       padding: '6px 14px',

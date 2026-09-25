@@ -16,7 +16,7 @@ import {
   X,
   ChevronDown
 } from 'lucide-react';
-import { initDatabase, getDatabaseStatus, DBConversation } from '../database/db';
+import { initDatabase, getDatabaseStatus, getSetting, DBConversation } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
 import { ModelManagerView } from './components/settings/ModelManagerView';
@@ -32,6 +32,7 @@ import { useGlobalStatus, globalStatus } from '../core/status';
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [appTheme, setAppTheme] = useState<'default' | 'slate' | 'amber'>('default');
   const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'models' | 'settings'>('chat');
   const [conversations, setConversations] = useState<DBConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -76,6 +77,15 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+
+    // Listen for theme changes from SettingsView
+    const themeHandler = (e: any) => {
+      if (e.detail && (e.detail === 'default' || e.detail === 'slate' || e.detail === 'amber')) {
+        setAppTheme(e.detail);
+      }
+    };
+    window.addEventListener('app_theme_changed', themeHandler);
+
     async function setupApp() {
       try {
         globalStatus.setDBStatus('Connecting');
@@ -90,6 +100,16 @@ export default function App() {
             tables: status.tables
           });
           globalStatus.setDBStatus('Ready');
+
+          // Load saved theme preference
+          try {
+            const savedTheme = getSetting('app_theme') as any;
+            if (savedTheme === 'slate' || savedTheme === 'amber' || savedTheme === 'default') {
+              setAppTheme(savedTheme);
+            }
+          } catch {
+            // ignore
+          }
 
           // Initialize model manager
           await modelManager.initialize();
@@ -157,6 +177,7 @@ export default function App() {
 
     return () => {
       mounted = false;
+      window.removeEventListener('app_theme_changed', themeHandler);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('keydown', handleGlobalKeyDown);
@@ -219,7 +240,7 @@ export default function App() {
   const activeModel = modelManager.getActiveModel();
 
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${appTheme === 'default' ? 'joyboy' : appTheme}`}>
       {/* Unified ChatGPT-Style Left Navigation Sidebar */}
       <aside className={`sidebar ${!sidebarOpen ? 'collapsed' : ''}`}>
         {/* Header with Clickable Logo to Toggle */}
@@ -235,8 +256,8 @@ export default function App() {
               className="logo-badge-img" 
             />
             <div style={{ textAlign: 'left' }}>
-              <div style={{ fontWeight: 700, fontSize: '15px', color: '#f4f4f5', letterSpacing: '0.2px' }}>JoyBoy</div>
-              <div style={{ fontSize: '10.5px', color: '#a1a1aa' }}>v0.1.0 · Offline AI</div>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: '#f59e0b', letterSpacing: '0.2px' }}>JoyBoy</div>
+              <div style={{ fontSize: '10.5px', color: '#94a3b8' }}>v0.1.0 · Offline AI</div>
             </div>
           </button>
 
@@ -280,6 +301,7 @@ export default function App() {
           >
             <MessageSquare size={16} />
             <span>Chat</span>
+            {activeTab === 'chat' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
@@ -288,6 +310,7 @@ export default function App() {
           >
             <GraduationCap size={16} />
             <span>Study Mode</span>
+            {activeTab === 'study' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
@@ -296,6 +319,7 @@ export default function App() {
           >
             <Database size={16} />
             <span>Knowledge Base</span>
+            {activeTab === 'knowledge' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
@@ -304,6 +328,7 @@ export default function App() {
           >
             <FileText size={16} />
             <span>Documents</span>
+            {activeTab === 'documents' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
@@ -312,6 +337,7 @@ export default function App() {
           >
             <Cpu size={16} />
             <span>Model Manager</span>
+            {activeTab === 'models' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
@@ -320,6 +346,7 @@ export default function App() {
           >
             <SettingsIcon size={16} />
             <span>Settings</span>
+            {activeTab === 'settings' && appTheme === 'default' && <span className="ship-badge">⛵</span>}
           </button>
         </nav>
 
@@ -533,7 +560,10 @@ export default function App() {
 
           {activeTab === 'settings' && (
             <div style={{ padding: '24px' }}>
-              <SettingsView onNavigateToModels={() => setActiveTab('models')} />
+              <SettingsView 
+                onNavigateToModels={() => setActiveTab('models')} 
+                onThemeChange={(newTheme) => setAppTheme(newTheme)}
+              />
             </div>
           )}
         </section>
