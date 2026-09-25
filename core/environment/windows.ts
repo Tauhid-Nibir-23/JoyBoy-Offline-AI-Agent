@@ -77,3 +77,9 @@ export class WindowsHardwareAdapter implements HardwareAdapter {
 }
 
 export const windowsHardwareAdapter = new WindowsHardwareAdapter();
+
+export const windowsEnvironment = {
+  osName: 'Windows',
+  formatPath: (p: string) => p.replace(/\//g, '\\'),
+  whichCommand: 'where'
+};

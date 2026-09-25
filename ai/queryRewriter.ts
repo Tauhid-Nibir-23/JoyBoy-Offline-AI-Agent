@@ -154,7 +154,10 @@ export class QueryRewriter {
       /(?:২|৩|৪|৫)\s*নম্বর/.test(trimmed) ||
       lower.includes('2 number') || lower.includes('3 number') || lower.includes('4 number');
 
-    if (hasOrdinalMention && !lower.startsWith('what is') && !lower.startsWith('explain ')) {
+    // If query asks for a quantity of items/MCQs (e.g. "3 ta MCQ daw", "5 ta question banaw"), do not mistake it for item reference #3
+    const isQuantityQuery = /\b[0-9১-৯]+\s*(?:ta|ti|টা|টি)?\s*(?:mcq|quiz|question|prosno)\b/i.test(lower);
+
+    if (!isQuantityQuery && hasOrdinalMention && !lower.startsWith('what is') && !lower.startsWith('explain ')) {
       let itemNum = 0;
       if (ordinalMatch) {
         const rawToken = ordinalMatch[1];

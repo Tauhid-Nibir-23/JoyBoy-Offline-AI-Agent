@@ -32,7 +32,7 @@ export function validateResponse(input: ResponseValidationInput): ResponseValida
   const lower = text.toLowerCase();
 
   // 1. Basic length check
-  if (!text || text.length < 5) {
+  if (!text || text.length < 2) {
     issues.push('Response is empty or too short');
     return {
       isValid: false,

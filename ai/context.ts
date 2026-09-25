@@ -36,13 +36,16 @@ export function buildContextWindow(
   history: ChatMessage[],
   options: ContextBuildOptions = {}
 ): ChatMessage[] {
-  const systemPromptText = options.systemPrompt || DEFAULT_SYSTEM_PROMPT;
   const contextLength = options.contextLength || 4096;
   const reservedOutputTokens = options.reservedOutputTokens || 512;
   const availableInputTokens = Math.max(256, contextLength - reservedOutputTokens);
 
+  // Check if an existing system message is already present in history
+  const existingSystemMsg = history.find((m) => m.role === 'system' && m.id !== 'conv_summary');
+  const systemPromptText = options.systemPrompt || existingSystemMsg?.content || DEFAULT_SYSTEM_PROMPT;
+
   const systemMsg: ChatMessage = {
-    id: 'system_prompt',
+    id: existingSystemMsg?.id || 'system_prompt',
     conversationId: history[0]?.conversationId || 'default',
     role: 'system',
     content: systemPromptText,
@@ -52,21 +55,38 @@ export function buildContextWindow(
   const systemTokens = estimateMessageTokens(systemMsg);
   let remainingBudget = availableInputTokens - systemTokens;
 
-  // Filter out any previous system messages from raw history
+  // Check for prior summary
+  const summaryMsg = history.find((m) => m.id === 'conv_summary');
+  let includedSummary: ChatMessage | null = null;
+  if (summaryMsg) {
+    const summaryTokens = estimateMessageTokens(summaryMsg);
+    if (summaryTokens < remainingBudget * 0.3) {
+      includedSummary = summaryMsg;
+      remainingBudget -= summaryTokens;
+    }
+  }
+
+  // Filter out any system messages from non-system conversation history
   const nonSystemHistory = history.filter((m) => m.role !== 'system');
 
   if (nonSystemHistory.length === 0) {
-    return [systemMsg];
+    return includedSummary ? [systemMsg, includedSummary] : [systemMsg];
   }
 
-  // Work backwards from the most recent message
+  // Work backwards from the most recent message:
+  // Priority 1: Latest user message (mandatory)
+  // Priority 2: Immediate previous assistant turn (preserved if it fits)
+  // Priority 3: Recent conversation turns
   const selected: ChatMessage[] = [];
   for (let i = nonSystemHistory.length - 1; i >= 0; i--) {
     const msg = nonSystemHistory[i];
     const msgTokens = estimateMessageTokens(msg);
 
-    // Always keep the newest message even if it takes most of the budget
-    if (selected.length === 0 || msgTokens <= remainingBudget) {
+    // Always keep newest message; prioritize immediate previous assistant message if it fits
+    const isNewest = selected.length === 0;
+    const isImmediatePrevious = selected.length === 1 && msg.role === 'assistant';
+
+    if (isNewest || (isImmediatePrevious && msgTokens <= remainingBudget) || msgTokens <= remainingBudget) {
       selected.unshift(msg);
       remainingBudget -= msgTokens;
     } else {
@@ -75,7 +95,12 @@ export function buildContextWindow(
     }
   }
 
-  return [systemMsg, ...selected];
+  const result: ChatMessage[] = [systemMsg];
+  if (includedSummary) {
+    result.push(includedSummary);
+  }
+  result.push(...selected);
+  return result;
 }
 
 /**

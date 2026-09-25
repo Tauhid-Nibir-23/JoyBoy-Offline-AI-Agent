@@ -12,6 +12,9 @@ export interface ContextAssembleOptions {
   retrievedChunks?: RAGSearchResult[];
   systemInstruction: string;
   currentUserMessageText: string;
+  resolvedContext?: string;
+  resolvedQuery?: string;
+  intent?: string;
   contextLength?: number;
   reservedOutputTokens?: number;
 }
@@ -29,16 +32,18 @@ export class ConversationContextManager {
    * 1. System instruction (including language policy)
    * 2. Scoped attached document identity
    * 3. Rolling conversation summary (if older messages exist)
-   * 4. Recent conversation turns (kept in full, e.g. last 4-6 messages)
-   * 5. Current user query augmented with grounded study material
+   * 4. Recent conversation turns (kept in full, e.g. last 4-8 messages)
+   * 5. Current user query augmented with grounded study material & resolved context
    */
   public assembleContext(options: ContextAssembleOptions): AssembledContextResult {
     const {
       conversationId,
       history,
       attachedDocs,
+      retrievedChunks,
       systemInstruction,
       currentUserMessageText,
+      resolvedContext,
       contextLength = 4096,
       reservedOutputTokens = 512
     } = options;
@@ -64,6 +69,16 @@ export class ConversationContextManager {
       enhancedSystemPrompt += `\n\n[ATTACHED STUDY DOCUMENTS (${attachedDocs.length})]:\n${docList}\nAll study answers must strictly prioritize and ground on these attached documents.`;
     } else {
       enhancedSystemPrompt += '\n\n[ATTACHED DOCUMENTS]: None. This is a general study chat session.';
+    }
+
+    // Include RAG evidence as structured study material in system instructions if present
+    if (retrievedChunks && retrievedChunks.length > 0) {
+      const evidenceLines = retrievedChunks.map((c) => {
+        const p = c.chunk.pageNumber ? ` · Page ${c.chunk.pageNumber}` : '';
+        const h = c.chunk.heading ? ` · ${c.chunk.heading}` : '';
+        return `--- Document: ${c.chunk.filename}${p}${h} ---\n${c.chunk.text.trim()}`;
+      }).join('\n\n');
+      enhancedSystemPrompt += `\n\n[ATTACHED STUDY MATERIAL EVIDENCE]:\n${evidenceLines}\n\nGround your explanation on the evidence above and cite sources clearly.`;
     }
 
     const systemMsg: ChatMessage = {
@@ -113,12 +128,28 @@ export class ConversationContextManager {
     // 4. Assemble Recent Messages backwards to fit remaining token budget (Priority 3 & 2)
     const finalSelected: ChatMessage[] = [];
 
-    // Ensure the latest user message is always preserved
+    const cleanTag = (text: string) => text.replace(/\n\n\*(?:Local AI|Mock Assistant)[^*]+\*$/i, '').trim();
+
+    // Ensure the latest user message is always preserved with context hint if follow-up
     for (let i = recentMessages.length - 1; i >= 0; i--) {
-      const msg = recentMessages[i];
+      const rawMsg = recentMessages[i];
+      let content = cleanTag(rawMsg.content);
+
+      const isLatestUser = i === recentMessages.length - 1 && rawMsg.role === 'user';
+      if (isLatestUser && resolvedContext && resolvedContext.trim()) {
+        content = `[CONTEXT HINT: ${resolvedContext.trim()}]\n\n${content}`;
+      }
+
+      const msg: ChatMessage = {
+        ...rawMsg,
+        content
+      };
       const msgTokens = estimateMessageTokens(msg);
 
-      if (finalSelected.length === 0 || msgTokens <= remainingBudget) {
+      const isNewest = finalSelected.length === 0;
+      const isImmediatePrevious = finalSelected.length === 1 && msg.role === 'assistant';
+
+      if (isNewest || isImmediatePrevious || msgTokens <= remainingBudget) {
         finalSelected.unshift(msg);
         remainingBudget -= msgTokens;
       } else {
@@ -144,6 +175,7 @@ export class ConversationContextManager {
       attachedDocCount: attachedDocs.length
     };
   }
+
   public buildGenerationContext(options: {
     conversationId: string;
     userPrompt: string;

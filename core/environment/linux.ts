@@ -77,3 +77,9 @@ export class LinuxHardwareAdapter implements HardwareAdapter {
 }
 
 export const linuxHardwareAdapter = new LinuxHardwareAdapter();
+
+export const linuxEnvironment = {
+  osName: 'Linux',
+  formatPath: (p: string) => p.replace(/\\/g, '/'),
+  whichCommand: 'which'
+};

@@ -33,6 +33,7 @@ import { GENERATION_PRESETS } from '../../../models/registry';
 import { getOcrEngineStatus } from '../../../documents/intelligence/ocrProvider';
 import { OCREngineInfo } from '../../../documents/intelligence/types';
 import { runDiagnostics, DiagnosticsReport } from '../../../core/diagnostics';
+import { inferenceDiagnostics, InferenceDiagnosticsData } from '../../../ai/inferenceDiagnostics';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -81,6 +82,8 @@ export function SettingsView({
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState<boolean>(false);
   const [diagnosticsReport, setDiagnosticsReport] = useState<DiagnosticsReport | null>(null);
   const [isRunningDiagnostics, setIsRunningDiagnostics] = useState<boolean>(false);
+  const [debugInferenceContext, setDebugInferenceContext] = useState<boolean>(inferenceDiagnostics.isEnabled());
+  const [latestInferenceData, setLatestInferenceData] = useState<InferenceDiagnosticsData | null>(inferenceDiagnostics.getLatest());
 
   // Confirm Modal / Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -812,6 +815,106 @@ export function SettingsView({
                           </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Real Inference Diagnostics Inspector (Phase 11) */}
+                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#f4f4f5' }}>Inference Diagnostics</div>
+                      <div style={{ fontSize: '12px', color: '#71717a' }}>Inspect real prompt structure, active context, and speed (OFF by default)</div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12.5px', color: '#f4f4f5' }}>
+                      <input
+                        type="checkbox"
+                        checked={debugInferenceContext}
+                        onChange={(e) => {
+                          const next = e.target.checked;
+                          setDebugInferenceContext(next);
+                          inferenceDiagnostics.setEnabled(next);
+                          setLatestInferenceData(inferenceDiagnostics.getLatest());
+                          showToast('info', next ? 'Inference Diagnostics Enabled' : 'Inference Diagnostics Disabled');
+                        }}
+                      />
+                      <span>Debug Inference Context</span>
+                    </label>
+                  </div>
+
+                  {debugInferenceContext && (
+                    <div style={{ backgroundColor: '#09090b', padding: '14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                      {latestInferenceData ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255, 255, 255, 0.06)', paddingBottom: '6px' }}>
+                            <span style={{ color: '#a1a1aa' }}>Model:</span>
+                            <span style={{ color: '#60a5fa', fontWeight: 600 }}>{latestInferenceData.modelName}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>Provider:</span>
+                            <span style={{ color: '#f4f4f5' }}>{latestInferenceData.providerId}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>Context Budget:</span>
+                            <span style={{ color: '#10b981' }}>{latestInferenceData.tokenEstimate} tokens estimated / max {latestInferenceData.contextSize}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>History Turns:</span>
+                            <span style={{ color: '#f4f4f5' }}>{latestInferenceData.historyTurnsCount} turns included</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>Active Topic:</span>
+                            <span style={{ color: '#fbbf24', fontWeight: 500 }}>{latestInferenceData.activeTopic || 'None'}</span>
+                          </div>
+                          {latestInferenceData.activeSubtopic && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <span style={{ color: '#a1a1aa' }}>Active Subtopic / Concept:</span>
+                              <span style={{ color: '#38bdf8' }}>{latestInferenceData.activeSubtopic}</span>
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>Intent Detected:</span>
+                            <span style={{ color: '#c084fc' }}>{latestInferenceData.intent}</span>
+                          </div>
+                          {latestInferenceData.resolvedContext && (
+                            <div style={{ backgroundColor: '#18181b', padding: '6px 8px', borderRadius: '4px', color: '#e4e4e7', fontSize: '11px' }}>
+                              <strong>Resolved Context:</strong> {latestInferenceData.resolvedContext}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>RAG Chunks Retrieved:</span>
+                            <span style={{ color: '#f4f4f5' }}>{latestInferenceData.retrievedChunkCount} chunks</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ color: '#a1a1aa' }}>Generation Speed:</span>
+                            <span style={{ color: '#34d399' }}>{latestInferenceData.generationSpeedTokPerSec ? `${latestInferenceData.generationSpeedTokPerSec} tok/s` : 'Measured during stream'}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+                            <button
+                              onClick={() => {
+                                inferenceDiagnostics.clear();
+                                setLatestInferenceData(null);
+                                showToast('info', 'Diagnostics Cleared');
+                              }}
+                              style={{
+                                padding: '4px 10px',
+                                fontSize: '11px',
+                                backgroundColor: '#27272a',
+                                border: '1px solid #3f3f46',
+                                color: '#a1a1aa',
+                                borderRadius: '4px',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              Clear Diagnostics
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ color: '#71717a', fontSize: '12px', textAlign: 'center', padding: '10px 0' }}>
+                          No inference request recorded yet. Send a message in chat to inspect live prompt context.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

@@ -7,6 +7,8 @@ import { conversationMemory } from './conversationMemory';
 import { queryRewriter } from './queryRewriter';
 import { conversationContextManager } from './contextManager';
 import { validateResponse } from './responseValidator';
+import { inferenceDiagnostics } from './inferenceDiagnostics';
+import { modelManager } from '../models/manager';
 import {
   getAllConversations,
   createConversationInDB,
@@ -107,6 +109,26 @@ export class ChatService {
     }
     this.lastResolvedProvider = this.mockProvider;
     return this.mockProvider;
+  }
+
+  /**
+   * Phase 11 Section 15: Model Health Check
+   * Explicitly verifies that the local model exists, can load, and engine is ready
+   * without masking errors behind MockProvider.
+   */
+  public async verifyModelHealth(): Promise<{ ready: boolean; error?: string; modelName?: string }> {
+    const type = this.getProviderType();
+    if (type === 'mock') {
+      return { ready: true, modelName: 'Mock Provider' };
+    }
+    const isReady = await this.llamaProvider.isAvailable();
+    if (!isReady) {
+      return {
+        ready: false,
+        error: 'Local llama.cpp inference engine is not ready or the active model GGUF file is missing. Please verify your model in Settings → AI Models.'
+      };
+    }
+    return { ready: true, modelName: this.llamaProvider.name };
   }
 
   public getActiveProviderSync(): { id: string; name: string; isLocalAI: boolean } {
@@ -358,13 +380,6 @@ export class ChatService {
 
         if (ragContext.usedKnowledge && ragContext.sources.length > 0) {
           usedSources = ragContext.sources;
-          // Substitute the latest user message with augmented prompt containing retrieved chunks
-          promptMsgs = promptMsgs.map((m, idx) => {
-            if (idx === promptMsgs.length - 1 && m.role === 'user') {
-              return { ...m, content: ragContext.augmentedUserPrompt };
-            }
-            return m;
-          });
           ragSystemPrompt = ragContext.systemInstruction;
         } else if (ragContext.systemInstruction) {
           // No relevant document chunks found in this conversation's attached materials
@@ -394,18 +409,45 @@ Rules:
 ${langPolicy}`;
     }
 
-    // Phase 10: Token-budget-aware context window assembly
+    // Phase 10 & 11: Token-budget-aware context window assembly with resolved context
     const assembledContext = conversationContextManager.assembleContext({
       conversationId,
       history: promptMsgs,
       attachedDocs,
       systemInstruction: ragSystemPrompt,
-      currentUserMessageText: userQueryText
+      currentUserMessageText: userQueryText,
+      resolvedContext: rewrittenQueryInfo.resolvedContext,
+      resolvedQuery: rewrittenQueryInfo.resolvedQuery,
+      intent: rewrittenQueryInfo.intent
     });
     promptMsgs = assembledContext.messages;
 
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
     const provider = await this.resolveProvider();
+
+    // Record inference diagnostics for safe developer observability
+    const activeModel = modelManager.getActiveModel();
+    const memoryState = conversationMemory.getMemory(conversationId);
+    inferenceDiagnostics.record({
+      timestamp: new Date().toISOString(),
+      modelName: activeModel?.name || (provider.id === 'llamacpp' ? 'Local GGUF' : 'Mock Provider'),
+      providerId: provider.id,
+      contextSize: assembledContext.contextTokensEstimate,
+      maxTokens: options?.maxTokens || 512,
+      temperature: options?.temperature || 0.4,
+      historyTurnsCount: assembledContext.messages.filter((m) => m.role !== 'system').length,
+      tokenEstimate: assembledContext.contextTokensEstimate,
+      activeTopic: memoryState.activeTopic || null,
+      activeSubtopic: memoryState.activeSubtopic || null,
+      activeChapter: memoryState.activeChapter || null,
+      originalUserPrompt: userQueryText,
+      resolvedQuery: rewrittenQueryInfo.resolvedQuery,
+      resolvedContext: rewrittenQueryInfo.resolvedContext,
+      intent: rewrittenQueryInfo.intent,
+      retrievedChunkCount: usedSources.length,
+      documentNames: attachedDocs.map((d) => d.filename),
+      systemPromptPreview: ragSystemPrompt.slice(0, 160) + '...'
+    });
 
     let accumulatedText = '';
     let recordedMetrics: GenerationMetrics | undefined;
@@ -473,13 +515,18 @@ ${langPolicy}`;
       }
     }
 
-    // Append performance footer metadata if metrics exist and generation wasn't stopped with an error
-    let finalContent = assistantText;
-    if (recordedMetrics && !wasCancelled && !assistantText.startsWith('⚠️ **Local AI Error:**')) {
-      const tag = recordedMetrics.providerId === 'llamacpp'
-        ? `*Local AI · ${recordedMetrics.modelName || 'GGUF'} · ${recordedMetrics.tokensPerSecond || 0} tok/s*`
-        : `*Mock Assistant · Offline Fallback*`;
-      finalContent = `${assistantText}\n\n${tag}`;
+    // Clean message content without noisy trailing footers polluting future context
+    const finalContent = assistantText;
+
+    if (recordedMetrics) {
+      const currentDiag = inferenceDiagnostics.getLatest();
+      if (currentDiag) {
+        inferenceDiagnostics.record({
+          ...currentDiag,
+          generationSpeedTokPerSec: recordedMetrics.tokensPerSecond,
+          firstTokenLatencyMs: recordedMetrics.firstTokenLatencyMs
+        });
+      }
     }
 
     const assistantMsgId = 'msg_a_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
