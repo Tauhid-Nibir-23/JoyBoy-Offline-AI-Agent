@@ -177,12 +177,18 @@ export class LocalAIEngine {
         const fs = await import('fs');
         const srvPath = path.resolve(process.cwd(), 'bin', process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
         if (fs.existsSync(srvPath)) {
+          const binDir = path.dirname(srvPath);
           const child = spawn(srvPath, [
             '-m', modelPath,
             '--port', '8088',
             '--host', '127.0.0.1',
             '-t', String(this.config.cpuThreads)
-          ], { detached: true, stdio: 'ignore' });
+          ], {
+            cwd: binDir,
+            env: { ...process.env, PATH: `${binDir};${process.env.PATH || ''}` },
+            detached: true,
+            stdio: 'ignore'
+          });
           child.unref();
           for (let i = 0; i < 25; i++) {
             await new Promise((r) => setTimeout(r, 200));

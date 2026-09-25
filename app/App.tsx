@@ -1,19 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { 
+  Plus,
+  Search,
   MessageSquare, 
   GraduationCap, 
   Database, 
   FileText, 
-  RefreshCw, 
   Settings as SettingsIcon, 
-  Wifi, 
-  WifiOff, 
   Cpu, 
-  HardDrive,
-  Layers,
-  BookOpen
+  PanelLeftClose,
+  PanelLeft,
+  Trash2,
+  Edit2,
+  Check,
+  X,
+  ChevronDown
 } from 'lucide-react';
-import { initDatabase, getDatabaseStatus } from '../database/db';
+import { initDatabase, getDatabaseStatus, DBConversation } from '../database/db';
 import { detectEnvironment, SystemStatus } from '../core/environment';
 import { ChatView } from './components/chat/ChatView';
 import { ModelManagerView } from './components/settings/ModelManagerView';
@@ -28,8 +31,14 @@ import { localAIEngine } from '../ai/localEngine';
 import { useGlobalStatus, globalStatus } from '../core/status';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'models' | 'sync' | 'settings'>('chat');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<'chat' | 'study' | 'knowledge' | 'documents' | 'models' | 'settings'>('chat');
+  const [conversations, setConversations] = useState<DBConversation[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingConvId, setEditingConvId] = useState<string | null>(null);
+  const [editConvTitle, setEditConvTitle] = useState('');
+
   const [studyParams, setStudyParams] = useState<{
     action: StudyActionType;
     documentId?: string | null;
@@ -53,6 +62,18 @@ export default function App() {
     setActiveTab('study');
   };
 
+  const loadConversations = () => {
+    try {
+      const list = chatService.getConversations();
+      setConversations(list);
+      if (list.length > 0 && !activeConvId) {
+        setActiveConvId(list[0].id);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     async function setupApp() {
@@ -70,12 +91,32 @@ export default function App() {
           });
           globalStatus.setDBStatus('Ready');
 
-          // Initialize model manager & sync engine status
+          // Initialize model manager
           await modelManager.initialize();
-          const active = modelManager.getActiveModel();
-          const eng = localAIEngine.getStatus();
-          globalStatus.setModelStatus(eng.isServerRunning ? 'Loaded' : 'Not Loaded', active?.name);
+          let active = modelManager.getActiveModel();
+
+          // Auto-select installed model if available and none selected
+          if (!active || !active.path) {
+            const registered = modelManager.getRegisteredModels();
+            const installed = registered.find(m => (m.status === 'Ready' || m.status === 'Installed') && m.path);
+            if (installed) {
+              await modelManager.selectActiveModel(installed.id);
+              active = modelManager.getActiveModel();
+            }
+          }
+
+          // Preload model if available
+          if (active && active.path) {
+            globalStatus.setModelStatus('Not Loaded', active.name);
+            const loaded = await localAIEngine.loadModel(active.path);
+            const eng = localAIEngine.getStatus();
+            globalStatus.setModelStatus(eng.isServerRunning || loaded ? 'Loaded' : 'Not Loaded', active.name);
+          } else {
+            globalStatus.setModelStatus('Not Loaded');
+          }
           globalStatus.setAIStatus('Ready');
+
+          loadConversations();
         } else {
           const status = getDatabaseStatus();
           setDbState({
@@ -106,13 +147,7 @@ export default function App() {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'n') {
         e.preventDefault();
-        try {
-          const newConv = chatService.createConversation('New Chat');
-          setActiveConvId(newConv.id);
-          setActiveTab('chat');
-        } catch {
-          setActiveTab('chat');
-        }
+        handleNewChat();
       }
     };
 
@@ -128,37 +163,130 @@ export default function App() {
     };
   }, []);
 
+  const handleNewChat = () => {
+    try {
+      const newConv = chatService.createConversation('New Chat');
+      loadConversations();
+      setActiveConvId(newConv.id);
+      setActiveTab('chat');
+    } catch {
+      setActiveTab('chat');
+    }
+  };
+
+  const handleDeleteConversation = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      chatService.deleteConversation(id);
+      const updated = chatService.getConversations();
+      setConversations(updated);
+      if (activeConvId === id) {
+        if (updated.length > 0) {
+          setActiveConvId(updated[0].id);
+        } else {
+          setActiveConvId(null);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const startRename = (c: DBConversation, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingConvId(c.id);
+    setEditConvTitle(c.title);
+  };
+
+  const confirmRename = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (editConvTitle.trim()) {
+      chatService.renameConversation(id, editConvTitle.trim());
+      loadConversations();
+    }
+    setEditingConvId(null);
+  };
+
+  const cancelRename = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingConvId(null);
+  };
+
+  const filteredConversations = conversations.filter(c =>
+    c.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const activeModel = modelManager.getActiveModel();
+
   return (
     <div className="app-container">
-      {/* Sidebar Navigation */}
-      <aside className="sidebar">
+      {/* Unified ChatGPT-Style Left Navigation Sidebar */}
+      <aside className={`sidebar ${!sidebarOpen ? 'collapsed' : ''}`}>
+        {/* Header with Clickable Logo to Toggle */}
         <div className="sidebar-header">
-          <img 
-            src="/assets/joyboy_logo.png" 
-            alt="JoyBoy" 
-            className="logo-badge-img" 
-          />
-          <div>
-            <div style={{ fontWeight: 700, fontSize: '16px', color: '#ffedd5', letterSpacing: '0.3px' }}>JoyBoy</div>
-            <div style={{ fontSize: '11px', color: '#d97706', fontWeight: 500 }}>v0.1.0 · Offline AI</div>
+          <button 
+            className="sidebar-logo-group"
+            onClick={() => setSidebarOpen(prev => !prev)}
+            title="Click logo to toggle sidebar"
+          >
+            <img 
+              src="/assets/joyboy_logo.png" 
+              alt="JoyBoy" 
+              className="logo-badge-img" 
+            />
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontWeight: 700, fontSize: '15px', color: '#f4f4f5', letterSpacing: '0.2px' }}>JoyBoy</div>
+              <div style={{ fontSize: '10.5px', color: '#a1a1aa' }}>v0.1.0 · Offline AI</div>
+            </div>
+          </button>
+
+          <button 
+            className="sidebar-toggle-btn"
+            onClick={() => setSidebarOpen(false)}
+            title="Close sidebar"
+          >
+            <PanelLeftClose size={18} />
+          </button>
+        </div>
+
+        {/* Top Actions: New Chat & Search */}
+        <div className="sidebar-top-actions">
+          <button 
+            className="new-chat-btn"
+            onClick={handleNewChat}
+            title="New Chat (Ctrl+N)"
+          >
+            <Plus size={16} />
+            <span>New chat</span>
+          </button>
+
+          <div className="search-chat-container">
+            <Search size={14} style={{ color: '#71717a' }} />
+            <input 
+              type="text"
+              placeholder="Search chats..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="search-chat-input"
+            />
           </div>
         </div>
 
+        {/* Nav Menu Items */}
         <nav className="nav-menu">
           <button 
             className={`nav-item ${activeTab === 'chat' ? 'active' : ''}`}
             onClick={() => setActiveTab('chat')}
           >
-            <MessageSquare size={18} />
+            <MessageSquare size={16} />
             <span>Chat</span>
-            {activeTab === 'chat' && <span className="ship-badge">⛵</span>}
           </button>
 
           <button 
             className={`nav-item ${activeTab === 'study' ? 'active' : ''}`}
             onClick={() => setActiveTab('study')}
           >
-            <GraduationCap size={18} />
+            <GraduationCap size={16} />
             <span>Study Mode</span>
           </button>
 
@@ -166,7 +294,7 @@ export default function App() {
             className={`nav-item ${activeTab === 'knowledge' ? 'active' : ''}`}
             onClick={() => setActiveTab('knowledge')}
           >
-            <Database size={18} />
+            <Database size={16} />
             <span>Knowledge Base</span>
           </button>
 
@@ -174,7 +302,7 @@ export default function App() {
             className={`nav-item ${activeTab === 'documents' ? 'active' : ''}`}
             onClick={() => setActiveTab('documents')}
           >
-            <FileText size={18} />
+            <FileText size={16} />
             <span>Documents</span>
           </button>
 
@@ -182,152 +310,232 @@ export default function App() {
             className={`nav-item ${activeTab === 'models' ? 'active' : ''}`}
             onClick={() => setActiveTab('models')}
           >
-            <Cpu size={18} />
+            <Cpu size={16} />
             <span>Model Manager</span>
-          </button>
-
-          <button 
-            className={`nav-item ${activeTab === 'sync' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sync')}
-          >
-            <RefreshCw size={18} />
-            <span>Sync Center</span>
           </button>
 
           <button 
             className={`nav-item ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
-            <SettingsIcon size={18} />
+            <SettingsIcon size={16} />
             <span>Settings</span>
           </button>
         </nav>
 
+        {/* Chats Section */}
+        <div className="chats-section">
+          <div className="chats-header">Chats</div>
+
+          {filteredConversations.length === 0 ? (
+            <div style={{ color: '#71717a', fontSize: '12px', padding: '10px 8px' }}>
+              {searchQuery ? 'No chats match search' : 'No chats yet'}
+            </div>
+          ) : (
+            filteredConversations.map(c => {
+              const isSelected = activeTab === 'chat' && activeConvId === c.id;
+              const isEditing = editingConvId === c.id;
+
+              return (
+                <div 
+                  key={c.id}
+                  className={`chat-item ${isSelected ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveConvId(c.id);
+                    setActiveTab('chat');
+                  }}
+                >
+                  {isEditing ? (
+                    <div 
+                      style={{ display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input 
+                        type="text"
+                        value={editConvTitle}
+                        onChange={(e) => setEditConvTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') confirmRename(c.id, e as any);
+                          if (e.key === 'Escape') cancelRename(e as any);
+                        }}
+                        autoFocus
+                        style={{
+                          flex: 1,
+                          backgroundColor: '#27272a',
+                          border: '1px solid #3f3f46',
+                          borderRadius: '4px',
+                          color: '#f4f4f5',
+                          fontSize: '12px',
+                          padding: '2px 6px',
+                          outline: 'none'
+                        }}
+                      />
+                      <button 
+                        onClick={(e) => confirmRename(c.id, e)}
+                        className="chat-action-btn"
+                        title="Confirm"
+                      >
+                        <Check size={12} color="#10b981" />
+                      </button>
+                      <button 
+                        onClick={cancelRename}
+                        className="chat-action-btn"
+                        title="Cancel"
+                      >
+                        <X size={12} color="#ef4444" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span style={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        flex: 1
+                      }}>
+                        {c.title}
+                      </span>
+
+                      <div className="chat-item-actions">
+                        <button 
+                          onClick={(e) => startRename(c, e)}
+                          className="chat-action-btn"
+                          title="Rename"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button 
+                          onClick={(e) => handleDeleteConversation(c.id, e)}
+                          className="chat-action-btn delete"
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Sidebar Footer Profile */}
         <div className="sidebar-footer">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>OS:</span>
-            <span style={{ color: '#cbd5e1' }}>{sysStatus.os}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Node:</span>
-            <span style={{ color: '#cbd5e1' }}>{sysStatus.nodeVersion}</span>
+          <div className="user-avatar">JB</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, color: '#f4f4f5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              JoyBoy AI
+            </div>
+            <div style={{ fontSize: '11px', color: '#71717a' }}>
+              Offline Personal Assistant
+            </div>
           </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <main className="main-content">
-        {/* Top Status Header */}
+        {/* Minimal Top Bar */}
         <header className="top-bar">
-          <div style={{ fontSize: '15px', fontWeight: 600, color: '#f8fafc' }}>
-            {activeTab === 'models' ? 'Model Manager' : activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('-', ' ')}
+          <div className="top-bar-left">
+            {!sidebarOpen && (
+              <button 
+                className="sidebar-toggle-btn"
+                onClick={() => setSidebarOpen(true)}
+                title="Open sidebar"
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f4f4f5' }}
+              >
+                <img 
+                  src="/assets/joyboy_logo.png" 
+                  alt="JoyBoy" 
+                  style={{ width: '22px', height: '22px', objectFit: 'contain' }} 
+                />
+                <PanelLeft size={18} />
+              </button>
+            )}
+
+            <button 
+              className="top-bar-model-badge"
+              onClick={() => setActiveTab('models')}
+              title="Click to view Model Manager"
+            >
+              <Cpu size={14} style={{ color: appStatus.model === 'Loaded' ? '#10b981' : '#f59e0b' }} />
+              <span>{activeModel?.name ? activeModel.name : (appStatus.model === 'Loaded' ? 'Local GGUF' : 'Demo Mode')}</span>
+              <ChevronDown size={13} style={{ opacity: 0.6 }} />
+            </button>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* AI Status Badge */}
-            <div className="status-badge badge-neutral">
-              <Cpu size={13} />
-              <span className={`status-dot ${appStatus.ai === 'Ready' ? 'dot-green' : appStatus.ai === 'Generating' ? 'dot-amber' : appStatus.ai === 'Error' ? 'dot-red' : 'dot-amber'}`}></span>
-              <span>AI: {appStatus.ai}</span>
+          <div className="top-bar-right">
+            <div className="subtle-status-item">
+              <span className={`status-dot ${appStatus.ai === 'Ready' ? 'dot-green' : appStatus.ai === 'Generating' ? 'dot-amber' : 'dot-red'}`} />
+              <span>AI {appStatus.ai}</span>
             </div>
 
-            {/* Model Status Badge */}
-            <div className={`status-badge ${appStatus.model === 'Loaded' ? 'badge-online' : 'badge-neutral'}`}>
-              <Layers size={13} />
-              <span className={`status-dot ${appStatus.model === 'Loaded' ? 'dot-green' : 'dot-amber'}`}></span>
-              <span>Model: {appStatus.model}</span>
+            <div className="subtle-status-item">
+              <span className={`status-dot ${appStatus.model === 'Loaded' ? 'dot-green' : 'dot-amber'}`} />
+              <span>Model {appStatus.model}</span>
             </div>
 
-            {/* DB Status Badge */}
-            <div className={`status-badge ${appStatus.db === 'Ready' ? 'badge-online' : 'badge-offline'}`}>
-              <HardDrive size={13} />
-              <span className={`status-dot ${appStatus.db === 'Ready' ? 'dot-green' : (appStatus.db === 'Connecting' ? 'dot-amber' : 'dot-red')}`}></span>
-              <span>DB: {appStatus.db}</span>
+            <div className="subtle-status-item">
+              <span className={`status-dot ${appStatus.rag === 'Ready' ? 'dot-green' : 'dot-amber'}`} />
+              <span>RAG {appStatus.rag}</span>
             </div>
 
-            {/* RAG Status Badge */}
-            <div className={`status-badge ${appStatus.rag === 'Ready' ? 'badge-online' : 'badge-neutral'}`}>
-              <BookOpen size={13} />
-              <span className={`status-dot ${appStatus.rag === 'Ready' ? 'dot-green' : appStatus.rag === 'Indexing' ? 'dot-amber' : 'dot-red'}`}></span>
-              <span>RAG: {appStatus.rag}</span>
-            </div>
-
-            {/* Internet Status Badge */}
-            <div className={`status-badge ${sysStatus.isOnline ? 'badge-online' : 'badge-offline'}`}>
-              {sysStatus.isOnline ? <Wifi size={13} /> : <WifiOff size={13} />}
-              <span className={`status-dot ${sysStatus.isOnline ? 'dot-green' : 'dot-red'}`}></span>
+            <div className="subtle-status-item" style={{ opacity: 0.7 }}>
+              <span className={`status-dot ${sysStatus.isOnline ? 'dot-green' : 'dot-red'}`} />
               <span>{sysStatus.isOnline ? 'Online' : 'Offline'}</span>
             </div>
           </div>
         </header>
 
-        {/* Dynamic View Sections */}
-        <section className="view-container" style={{ padding: activeTab === 'chat' && dbState.status === 'ready' ? 0 : '24px', overflowY: activeTab === 'chat' ? 'hidden' : 'auto', height: 'calc(100vh - 52px)' }}>
+        {/* Dynamic Views Container */}
+        <section className="view-container">
           {activeTab === 'chat' && (
-            dbState.status === 'ready' ? (
-              <ChatView initialConversationId={activeConvId} />
-            ) : dbState.status === 'initializing' ? (
-              <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '350px' }}>
-                <div style={{ textAlign: 'center', color: '#94a3b8' }}>
-                  <HardDrive size={36} style={{ margin: '0 auto 12px auto', color: '#f59e0b' }} />
-                  <p style={{ fontSize: '15px', fontWeight: 600, color: '#ffedd5' }}>Initializing Offline SQLite Database...</p>
-                  <p style={{ fontSize: '12px', marginTop: '6px', color: '#94a3b8' }}>Verifying local schema tables and offline storage.</p>
-                </div>
-              </div>
-            ) : (
-              <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', minHeight: '350px' }}>
-                <div style={{ textAlign: 'center', color: '#f87171', maxWidth: '440px' }}>
-                  <HardDrive size={36} style={{ margin: '0 auto 12px auto', color: '#ef4444' }} />
-                  <h3 style={{ fontSize: '16px', fontWeight: 600, color: '#fca5a5' }}>Database Initialization Failed</h3>
-                  <p style={{ fontSize: '13px', marginTop: '8px', color: '#cbd5e1' }}>
-                    {dbState.error || 'Failed to initialize local SQLite storage.'}
-                  </p>
-                  <button 
-                    onClick={() => window.location.reload()} 
-                    style={{
-                      marginTop: '16px',
-                      padding: '8px 16px',
-                      backgroundColor: '#334155',
-                      color: '#f8fafc',
-                      border: '1px solid #475569',
-                      borderRadius: '6px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Retry
-                  </button>
-                </div>
-              </div>
-            )
-          )}
-
-          {activeTab === 'study' && (
-            <StudyModeView 
-              initialAction={studyParams.action}
-              initialDocumentId={studyParams.documentId}
-              onNavigateToChat={(convId) => {
-                setActiveConvId(convId);
-                setActiveTab('chat');
-              }}
+            <ChatView 
+              initialConversationId={activeConvId}
+              onOpenModelManager={() => setActiveTab('models')}
+              onConversationsChange={loadConversations}
             />
           )}
 
-          {activeTab === 'knowledge' && <KnowledgeBaseView onStudyAction={handleStudyAction} />}
-
-          {activeTab === 'documents' && <DocumentLibraryView onStudyAction={handleStudyAction} />}
-
-          {activeTab === 'models' && <ModelManagerView />}
-
-          {activeTab === 'sync' && (
-            <div className="card">
-              <h3>Sync Center (Placeholder)</h3>
-              <p style={{ color: '#94a3b8', marginTop: '8px' }}>
-                User-controlled allowlist sync dashboard. Network-aware and storage-aware sync engine.
-              </p>
+          {activeTab === 'study' && (
+            <div style={{ padding: '24px' }}>
+              <StudyModeView 
+                initialAction={studyParams.action}
+                initialDocumentId={studyParams.documentId}
+                onNavigateToChat={(convId) => {
+                  loadConversations();
+                  setActiveConvId(convId);
+                  setActiveTab('chat');
+                }}
+              />
             </div>
           )}
 
-          {activeTab === 'settings' && <SettingsView onNavigateToModels={() => setActiveTab('models')} />}
+          {activeTab === 'knowledge' && (
+            <div style={{ padding: '24px' }}>
+              <KnowledgeBaseView onStudyAction={handleStudyAction} />
+            </div>
+          )}
+
+          {activeTab === 'documents' && (
+            <div style={{ padding: '24px' }}>
+              <DocumentLibraryView onStudyAction={handleStudyAction} />
+            </div>
+          )}
+
+          {activeTab === 'models' && (
+            <div style={{ padding: '24px' }}>
+              <ModelManagerView />
+            </div>
+          )}
+
+          {activeTab === 'settings' && (
+            <div style={{ padding: '24px' }}>
+              <SettingsView onNavigateToModels={() => setActiveTab('models')} />
+            </div>
+          )}
         </section>
       </main>
     </div>

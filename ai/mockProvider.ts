@@ -157,16 +157,65 @@ The system utilizes stratified caching, paging, and demand loading to maximize t
 - Memory abstractions decouple application architecture from hardware limits.
 - Proper scheduling prevents starvation and minimizes latency.
 - Localized indexing enables instantaneous retrieval without cloud dependencies.`;
-    } else if (prompt.includes('round robin') || prompt.includes('local study material:')) {
-      fullText = `### Round Robin Scheduling (from Local Study Material)
+    } else if (prompt.includes('deadlock')) {
+      fullText = `### Deadlock in Operating Systems
 
-Based on your local study materials:
+A **deadlock** is a state in concurrent systems where a set of processes are permanently blocked because each process is holding a resource and waiting to acquire a resource held by another process in the set.
+
+#### The Four Coffman Conditions:
+1. **Mutual Exclusion:** At least one resource must be held in a non-shareable mode.
+2. **Hold and Wait:** A process must currently hold at least one resource and be waiting to acquire additional resources held by other processes.
+3. **No Preemption:** Resources cannot be confiscated forcibly; they can only be released voluntarily by the process holding them.
+4. **Circular Wait:** A closed chain of processes exists such that each process holds one or more resources needed by the next process in the chain.
+
+#### Handling Deadlocks:
+- **Prevention:** Design the system to ensure at least one of the Coffman conditions can never hold.
+- **Avoidance (Banker's Algorithm):** Dynamically examine resource allocation state to ensure a circular wait condition can never exist.
+- **Detection & Recovery:** Periodically inspect system resource allocation graphs to find cycles, then abort processes or preempt resources.`;
+    } else if (prompt.includes('round robin')) {
+      fullText = `### Round Robin Scheduling
+
 **Round Robin (RR) scheduling** assigns CPU execution time to each process in the ready queue using a fixed **time quantum** in circular order.
 
 #### Key Mechanics:
 - **Preemptive:** If a process does not complete within its assigned time quantum, it is preempted and moved to the back of the ready queue.
 - **Starvation-Free:** Every process receives guaranteed CPU cycles without priority starvation.
-- **Quantum Selection:** A balanced time quantum prevents excessive context switching while maintaining responsiveness.`;
+- **Quantum Selection:** A balanced time quantum prevents excessive context switching while maintaining responsiveness.
+
+If you asked to explain this in easy terms (সহজ ভাষায়):
+মনে করো ৩ জন বন্ধু একটা কম্পিউটার গেম খেলার জন্য লাইনে দাঁড়িয়ে আছে। তুমি সবাইকে ১০ মিনিট করে সময় দিলে (এটাকে Time Quantum বলে)। যার খেলা শেষ হবে না, সে আবার লাইনের পেছনে গিয়ে দাঁড়াবে। এভাবে সবাই সমান সুযোগ পায় এবং কেউ না খেলে আটকে থাকে না।`;
+    } else if (prompt.includes('chapter 02') || prompt.includes('chapter 2') || prompt.includes('অধ্যায়') || (prompt.includes('theke') && prompt.includes('bujhao'))) {
+      fullText = `### Chapter 02: Operating System Structures & Core Architecture
+
+Based on your local study materials for Chapter 02:
+
+#### 1. Operating System Services
+The OS provides an environment for program execution and essential services:
+- **User Interface:** CLI (Command Line Interface), GUI (Graphical User Interface), and batch interfaces.
+- **Program Execution:** Loading programs into memory, running them, and handling termination.
+- **I/O Operations:** Managing input/output devices safely and efficiently.
+- **File-System Manipulation:** Creating, reading, writing, and deleting files and directories.
+- **Communication & Resource Allocation:** IPC (Inter-Process Communication) and multi-user resource sharing.
+
+#### 2. System Calls
+System calls are the programmatic way in which a computer program requests a service from the kernel of the operating system:
+- Examples: \`fork()\`, \`exec()\`, \`read()\`, \`write()\`, \`open()\`, \`close()\`.
+- Invoked via software interrupts or traps switching from User Mode (Ring 3) to Kernel Mode (Ring 0).
+
+#### 3. Kernel Architectures
+- **Monolithic Kernels:** All OS services run in kernel space (high speed, Unix/Linux design).
+- **Microkernels:** Only minimal core functions in kernel; file systems and device drivers run in user space (reliable, modular).`;
+    } else if (prompt.includes('local study material:')) {
+      fullText = `### Study Material Explanation & Synthesis
+
+Based on your retrieved study document:
+
+#### Core Insights:
+- The material outlines foundational operating systems and computing principles.
+- Concurrency, CPU time distribution, and isolated memory spaces protect applications from system-level crashes.
+- Direct hardware abstraction enables secure multi-tasking across heterogeneous processor architectures.
+
+Feel free to ask specific questions about any section, algorithm, or chapter in your notes!`;
     } else if (prompt.includes('operating system') || prompt.includes('os')) {
       fullText = `### Operating System Concepts
 

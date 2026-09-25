@@ -1,13 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Square } from 'lucide-react';
+import { ArrowUp, Square, BookOpen } from 'lucide-react';
 
 interface MessageComposerProps {
   onSend: (text: string) => void;
   onStop?: () => void;
   disabled: boolean;
+  useStudyMaterials?: boolean;
+  onToggleStudyMaterials?: () => void;
+  indexedDocCount?: number;
 }
 
-export function MessageComposer({ onSend, onStop, disabled }: MessageComposerProps) {
+export function MessageComposer({
+  onSend,
+  onStop,
+  disabled,
+  useStudyMaterials = true,
+  onToggleStudyMaterials,
+  indexedDocCount = 0
+}: MessageComposerProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -41,108 +51,69 @@ export function MessageComposer({ onSend, onStop, disabled }: MessageComposerPro
   };
 
   return (
-    <div style={{ 
-      padding: '12px 32px 16px 32px', 
-      background: 'linear-gradient(180deg, transparent 0%, rgba(7, 11, 20, 0.8) 100%)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      width: '100%'
-    }}>
-      <form 
-        onSubmit={handleSubmit} 
-        className="wooden-composer-frame"
-        style={{ 
-          position: 'relative', 
-          display: 'flex', 
-          alignItems: 'center', 
-          width: '100%',
-          maxWidth: '850px',
-          padding: '4px 6px'
-        }}
-      >
+    <div className="bottom-composer-wrapper">
+      <form onSubmit={handleSubmit} className="bottom-composer-box">
         <textarea
           ref={textareaRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "AI is generating response... Click Stop to halt." : "What is an operating system? (Type your study prompt...)"}
+          placeholder={disabled ? "AI is generating response... Click Stop to halt." : "Ask anything about your study materials..."}
           disabled={disabled}
           rows={1}
           style={{
-            flex: 1,
+            width: '100%',
             backgroundColor: 'transparent',
             border: 'none',
-            padding: '10px 48px 10px 16px',
-            color: '#fffbeb',
-            fontSize: '14px',
+            color: '#f4f4f5',
+            fontSize: '14.5px',
             outline: 'none',
             resize: 'none',
-            maxHeight: '120px',
             lineHeight: 1.5,
             fontFamily: 'inherit'
           }}
         />
 
-        {disabled && onStop ? (
-          <button
-            type="button"
-            onClick={onStop}
-            title="Stop generation"
-            style={{
-              position: 'absolute',
-              right: '8px',
-              width: '34px',
-              height: '34px',
-              borderRadius: '50%',
-              backgroundColor: '#ef4444',
-              color: '#ffffff',
-              border: '1px solid #f87171',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 0 10px rgba(239, 68, 68, 0.6)'
-            }}
-          >
-            <Square size={13} fill="#ffffff" />
-          </button>
-        ) : (
-          <button
-            type="submit"
-            disabled={!text.trim() || disabled}
-            title="Send prompt"
-            style={{
-              position: 'absolute',
-              right: '8px',
-              width: '34px',
-              height: '34px',
-              borderRadius: '50%',
-              backgroundColor: text.trim() && !disabled ? '#d97706' : 'rgba(43, 24, 16, 0.6)',
-              color: text.trim() && !disabled ? '#ffffff' : '#78350f',
-              border: '1px solid rgba(245, 158, 11, 0.4)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: text.trim() && !disabled ? 'pointer' : 'not-allowed',
-              transition: 'all 0.2s ease',
-              boxShadow: text.trim() && !disabled ? '0 0 10px rgba(245, 158, 11, 0.6)' : 'none'
-            }}
-          >
-            <Send size={15} />
-          </button>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '4px' }}>
+          {/* Study Materials Toggle */}
+          {onToggleStudyMaterials ? (
+            <button
+              type="button"
+              onClick={onToggleStudyMaterials}
+              className={`tool-toggle-btn ${useStudyMaterials ? 'active' : ''}`}
+              title={useStudyMaterials ? 'Local document retrieval is ON' : 'Local document retrieval is OFF'}
+            >
+              <BookOpen size={13} style={{ color: useStudyMaterials ? '#f59e0b' : '#a1a1aa' }} />
+              <span>Study Materials {useStudyMaterials ? 'ON' : 'OFF'}</span>
+              {indexedDocCount > 0 && <span style={{ opacity: 0.65 }}>· {indexedDocCount} doc{indexedDocCount > 1 ? 's' : ''}</span>}
+            </button>
+          ) : <div />}
+
+          {/* Action Button: Send or Stop */}
+          {disabled && onStop ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="stop-circle-btn"
+              title="Stop generation"
+            >
+              <Square size={13} fill="#ffffff" />
+            </button>
+          ) : (
+            <button
+              type="submit"
+              disabled={!text.trim() || disabled}
+              className="send-circle-btn"
+              title="Send prompt"
+            >
+              <ArrowUp size={16} strokeWidth={2.5} />
+            </button>
+          )}
+        </div>
       </form>
 
-      <div style={{ 
-        textAlign: 'center', 
-        fontSize: '11px', 
-        color: '#d1b49d', 
-        marginTop: '8px',
-        textShadow: '0 1px 3px rgba(0, 0, 0, 0.9)'
-      }}>
-        JoyBoy — Private & Local · Responses stored in SQLite on your PC
+      <div className="bottom-composer-footer">
+        JoyBoy can make mistakes. Verify important study notes with your textbooks.
       </div>
     </div>
   );

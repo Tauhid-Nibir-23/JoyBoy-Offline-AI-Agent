@@ -241,6 +241,10 @@ pub fn start_llama_server(
     if let Some(parent) = Path::new(&server_bin).parent() {
         if parent.exists() {
             cmd.current_dir(parent);
+            if let Ok(current_path) = std::env::var("PATH") {
+                let new_path = format!("{};{}", parent.display(), current_path);
+                cmd.env("PATH", new_path);
+            }
         }
     }
 
@@ -325,6 +329,10 @@ pub fn run_inference(
     if let Some(parent) = Path::new(&cli_bin).parent() {
         if parent.exists() {
             cmd.current_dir(parent);
+            if let Ok(current_path) = std::env::var("PATH") {
+                let new_path = format!("{};{}", parent.display(), current_path);
+                cmd.env("PATH", new_path);
+            }
         }
     }
 
