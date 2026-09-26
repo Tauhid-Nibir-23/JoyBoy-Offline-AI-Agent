@@ -1,5 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { User, BookOpen, FileText, Copy, Check, RotateCw, AlertCircle, X, Trash2, Cpu, ArrowUpRight } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { 
+  User, 
+  BookOpen, 
+  FileText, 
+  Copy, 
+  Check, 
+  RotateCw, 
+  AlertCircle, 
+  X, 
+  Trash2, 
+  Cpu, 
+  ArrowUpRight,
+  ArrowDown
+} from 'lucide-react';
 import { ChatMessage, ChatMessageSource } from '../../../ai/provider';
 import { chatService } from '../../../ai/chatService';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -16,6 +29,205 @@ interface MessageListProps {
   onOpenModelManager?: () => void;
 }
 
+interface MessageItemProps {
+  msg: ChatMessage;
+  isLatestAssistant: boolean;
+  isLoading: boolean;
+  isCopied: boolean;
+  onCopy: (msgId: string, content: string) => void;
+  onRegenerate?: () => void;
+  onRetry?: () => void;
+  onDeleteMessage?: (msgId: string) => void;
+  onInspectSource: (source: ChatMessageSource) => void;
+  isSourcesExpanded: boolean;
+  onToggleSources: (msgId: string) => void;
+}
+
+const MessageItem = React.memo(function MessageItem({
+  msg,
+  isLatestAssistant,
+  isLoading,
+  isCopied,
+  onCopy,
+  onRegenerate,
+  onRetry,
+  onDeleteMessage,
+  onInspectSource,
+  isSourcesExpanded,
+  onToggleSources
+}: MessageItemProps) {
+  const isUser = msg.role === 'user';
+  const isError = !isUser && (msg.content.includes('⚠️ **Local AI Error:**') || msg.content.includes('⚠️'));
+  const isMock = msg.providerId === 'mock' || chatService.getProviderType() === 'mock';
+  const isLocalAI = !isUser && !isError && !isMock;
+
+  if (isUser) {
+    return (
+      <div className="user-msg-container">
+        <div className="user-msg-bubble" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+          <div style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>{msg.content}</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px', opacity: 0.6, userSelect: 'none' }}>
+            <button
+              onClick={() => onCopy(msg.id, msg.content)}
+              style={{ background: 'none', border: 'none', color: isCopied ? '#10b981' : '#a1a1aa', cursor: 'pointer', padding: '2px' }}
+              title="Copy message"
+            >
+              {isCopied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+            {onDeleteMessage && (
+              <button
+                onClick={() => onDeleteMessage(msg.id)}
+                style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', padding: '2px' }}
+                title="Delete message"
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="assistant-msg-container">
+      <div className="assistant-avatar" style={{ userSelect: 'none' }}>
+        <img 
+          src="/assets/joyboy_logo.png" 
+          alt="JoyBoy" 
+          style={{ width: '20px', height: '20px', objectFit: 'contain' }} 
+        />
+      </div>
+
+      <div className="assistant-msg-body" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+        {/* Compact Status Tag (Truthful Local AI indicator) */}
+        <div style={{ 
+          fontSize: '11px', 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px',
+          color: isError ? '#f87171' : isLocalAI ? '#10b981' : '#f59e0b',
+          userSelect: 'none'
+        }}>
+          <span style={{ 
+            width: '6px', 
+            height: '6px', 
+            borderRadius: '50%', 
+            backgroundColor: isError ? '#ef4444' : isLocalAI ? '#10b981' : '#f59e0b',
+            boxShadow: isLocalAI ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none'
+          }}></span>
+          <span>{isError ? 'Local AI Error' : isLocalAI ? 'Qwen 2.5 3B · Offline' : 'Demo / Mock Mode'}</span>
+        </div>
+
+        {/* Formatted Markdown Content */}
+        <div style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+          <MarkdownRenderer content={msg.content} />
+        </div>
+
+        {/* Compact Sources Indicator */}
+        {msg.sources && msg.sources.length > 0 && (
+          <div style={{ marginTop: '8px', userSelect: 'none' }}>
+            <button
+              onClick={() => onToggleSources(msg.id)}
+              className="compact-source-badge"
+              title="Click to view study sources"
+            >
+              <BookOpen size={13} />
+              <span>Sources · {msg.sources.length}</span>
+            </button>
+
+            {/* Expanded sources view if toggled */}
+            {isSourcesExpanded && (
+              <div style={{
+                marginTop: '8px',
+                backgroundColor: '#18181b',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '8px',
+                padding: '10px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '6px'
+              }}>
+                {msg.sources.map((s, sIdx) => (
+                  <div
+                    key={sIdx}
+                    onClick={() => onInspectSource(s)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '6px 8px',
+                      backgroundColor: '#27272a',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <FileText size={13} style={{ color: '#f59e0b' }} />
+                      <span style={{ color: '#f4f4f5' }}>{s.filename}</span>
+                      {s.pageNumber ? <span style={{ color: '#fbbf24', fontWeight: 500 }}>· Page {s.pageNumber}</span> : null}
+                      {s.heading && <span style={{ color: '#71717a' }}>· {s.heading}</span>}
+                    </div>
+                    <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 600 }}>
+                      {Math.round(s.similarity * 100)}% match
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Actions Row */}
+        <div className="msg-actions-row" style={{ userSelect: 'none' }}>
+          <button
+            onClick={() => onCopy(msg.id, msg.content)}
+            className="msg-action-btn"
+            title="Copy answer to clipboard"
+          >
+            {isCopied ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
+            <span style={{ color: isCopied ? '#10b981' : undefined }}>{isCopied ? 'Copied ✓' : 'Copy'}</span>
+          </button>
+
+          {isLatestAssistant && onRegenerate && !isLoading && (
+            <button
+              onClick={onRegenerate}
+              className="msg-action-btn"
+              title="Regenerate answer"
+            >
+              <RotateCw size={12} />
+              <span>Regenerate</span>
+            </button>
+          )}
+
+          {isError && onRetry && !isLoading && (
+            <button
+              onClick={onRetry}
+              className="msg-action-btn"
+              style={{ color: '#f87171' }}
+              title="Retry failed message"
+            >
+              <RotateCw size={12} />
+              <span>Retry</span>
+            </button>
+          )}
+
+          {onDeleteMessage && (
+            <button
+              onClick={() => onDeleteMessage(msg.id)}
+              className="msg-action-btn"
+              title="Delete message"
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export function MessageList({
   messages,
   isLoading,
@@ -27,14 +239,67 @@ export function MessageList({
   isModelInstalled = true,
   onOpenModelManager
 }: MessageListProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const isUserScrolledUpRef = useRef<boolean>(false);
+  const [showScrollBottom, setShowScrollBottom] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [inspectedSource, setInspectedSource] = useState<ChatMessageSource | null>(null);
   const [expandedSourcesMsgId, setExpandedSourcesMsgId] = useState<string | null>(null);
 
+  const prevMessagesLenRef = useRef<number>(messages.length);
+  const prevLoadingRef = useRef<boolean>(isLoading);
+
+  // Monitor scroll position on container
+  const handleScroll = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isUp = distanceFromBottom > 90;
+    isUserScrolledUpRef.current = isUp;
+    setShowScrollBottom(isUp);
+  }, []);
+
+  // When messages array changes: scroll to bottom if user is already near bottom or sent a message
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading, streamingContent]);
+    const el = containerRef.current;
+    if (!el) return;
+
+    const isNewUserMsg = messages.length > prevMessagesLenRef.current && messages[messages.length - 1]?.role === 'user';
+    prevMessagesLenRef.current = messages.length;
+
+    if (isNewUserMsg) {
+      isUserScrolledUpRef.current = false;
+      setShowScrollBottom(false);
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else if (!isUserScrolledUpRef.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages]);
+
+  // Smart Auto-Scroll during streaming: follow smoothly ONLY if user hasn't scrolled up
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isLoading) return;
+
+    if (!isUserScrolledUpRef.current) {
+      // Instantaneous non-blocking scroll update without queueing smooth animations
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [streamingContent, isLoading]);
+
+  // When generation finishes: keep scroll stable, do NOT violently jump user
+  useEffect(() => {
+    const wasLoading = prevLoadingRef.current;
+    prevLoadingRef.current = isLoading;
+
+    if (wasLoading && !isLoading) {
+      const el = containerRef.current;
+      if (el && !isUserScrolledUpRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+  }, [isLoading]);
 
   // Accessibility: close inspection modal on Escape key
   useEffect(() => {
@@ -48,14 +313,44 @@ export function MessageList({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [inspectedSource, expandedSourcesMsgId]);
 
-  const handleCopyMessage = (msgId: string, content: string) => {
-    const cleaned = content.replace(/\n\n\*(Local AI|Mock Assistant|Demo \/ Mock Mode)[^*]+\*$/, '').trim();
-    navigator.clipboard.writeText(cleaned);
-    setCopiedId(msgId);
-    setTimeout(() => {
-      setCopiedId((curr) => (curr === msgId ? null : curr));
-    }, 2000);
-  };
+  const handleCopyMessage = useCallback((msgId: string, content: string) => {
+    try {
+      const cleaned = content
+        .replace(/\n\n\*\(?(Local AI|Mock Assistant|Demo \/ Mock Mode|Generation stopped by user)[\s\S]*?\*?$/, '')
+        .trim();
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cleaned);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = cleaned;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedId(msgId);
+      setTimeout(() => {
+        setCopiedId((curr) => (curr === msgId ? null : curr));
+      }, 2000);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleScrollToBottom = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    isUserScrolledUpRef.current = false;
+    setShowScrollBottom(false);
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+  }, []);
+
+  const handleToggleSources = useCallback((msgId: string) => {
+    setExpandedSourcesMsgId((curr) => (curr === msgId ? null : msgId));
+  }, []);
 
   // Empty State: Modern ChatGPT Hero with Quick Prompts
   if (messages.length === 0 && !isLoading) {
@@ -134,193 +429,48 @@ export function MessageList({
   const lastAssistantIdx = messages.map(m => m.role).lastIndexOf('assistant');
 
   return (
-    <div className="messages-scroll-area">
-      <div className="messages-inner-wrap">
+    <div 
+      className="messages-scroll-area"
+      ref={containerRef}
+      onScroll={handleScroll}
+      style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
+    >
+      <div className="messages-inner-wrap" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
         {messages.map((msg, index) => {
-          const isUser = msg.role === 'user';
-          const isError = !isUser && (msg.content.includes('⚠️ **Local AI Error:**') || msg.content.includes('⚠️'));
-          const isMock = msg.providerId === 'mock' || chatService.getProviderType() === 'mock';
-          const isLocalAI = !isUser && !isError && !isMock;
           const isLatestAssistant = index === lastAssistantIdx;
 
           return (
-            <div key={msg.id} style={{ width: '100%' }}>
-              {isUser ? (
-                /* User Message: Sleek right-aligned dark pill */
-                <div className="user-msg-container">
-                  <div className="user-msg-bubble">
-                    <div>{msg.content}</div>
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px', opacity: 0.6 }}>
-                      <button
-                        onClick={() => handleCopyMessage(msg.id, msg.content)}
-                        style={{ background: 'none', border: 'none', color: copiedId === msg.id ? '#10b981' : '#a1a1aa', cursor: 'pointer', padding: '2px' }}
-                        title="Copy message"
-                      >
-                        {copiedId === msg.id ? <Check size={12} /> : <Copy size={12} />}
-                      </button>
-                      {onDeleteMessage && (
-                        <button
-                          onClick={() => onDeleteMessage(msg.id)}
-                          style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', padding: '2px' }}
-                          title="Delete message"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Assistant Message: Clean left-aligned markdown */
-                <div className="assistant-msg-container">
-                  <div className="assistant-avatar">
-                    <img 
-                      src="/assets/joyboy_logo.png" 
-                      alt="JoyBoy" 
-                      style={{ width: '20px', height: '20px', objectFit: 'contain' }} 
-                    />
-                  </div>
-
-                  <div className="assistant-msg-body">
-                    {/* Compact Status Tag (Phase 15 truthful indicator) */}
-                    <div style={{ 
-                      fontSize: '11px', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '6px',
-                      color: isError ? '#f87171' : isLocalAI ? '#10b981' : '#f59e0b'
-                    }}>
-                      <span style={{ 
-                        width: '6px', 
-                        height: '6px', 
-                        borderRadius: '50%', 
-                        backgroundColor: isError ? '#ef4444' : isLocalAI ? '#10b981' : '#f59e0b',
-                        boxShadow: isLocalAI ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none'
-                      }}></span>
-                      <span>{isError ? 'Local AI Error' : isLocalAI ? 'Qwen 2.5 3B · Offline' : 'Demo / Mock Mode'}</span>
-                    </div>
-
-                    <MarkdownRenderer content={msg.content} />
-
-                    {/* Compact Sources Indicator */}
-                    {msg.sources && msg.sources.length > 0 && (
-                      <div style={{ marginTop: '8px' }}>
-                        <button
-                          onClick={() => setExpandedSourcesMsgId(expandedSourcesMsgId === msg.id ? null : msg.id)}
-                          className="compact-source-badge"
-                          title="Click to view study sources"
-                        >
-                          <BookOpen size={13} />
-                          <span>Sources · {msg.sources.length}</span>
-                        </button>
-
-                        {/* Expanded sources view if toggled */}
-                        {expandedSourcesMsgId === msg.id && (
-                          <div style={{
-                            marginTop: '8px',
-                            backgroundColor: '#18181b',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            borderRadius: '8px',
-                            padding: '10px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '6px'
-                          }}>
-                            {msg.sources.map((s, sIdx) => (
-                              <div
-                                key={sIdx}
-                                onClick={() => setInspectedSource(s)}
-                                style={{
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'space-between',
-                                  padding: '6px 8px',
-                                  backgroundColor: '#27272a',
-                                  borderRadius: '6px',
-                                  fontSize: '12px',
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <FileText size={13} style={{ color: '#f59e0b' }} />
-                                  <span style={{ color: '#f4f4f5' }}>{s.filename}</span>
-                                  {s.pageNumber ? <span style={{ color: '#fbbf24', fontWeight: 500 }}>· Page {s.pageNumber}</span> : null}
-                                  {s.heading && <span style={{ color: '#71717a' }}>· {s.heading}</span>}
-                                </div>
-                                <span style={{ color: '#10b981', fontSize: '11px', fontWeight: 600 }}>
-                                  {Math.round(s.similarity * 100)}% match
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Actions Row */}
-                    <div className="msg-actions-row">
-                      <button
-                        onClick={() => handleCopyMessage(msg.id, msg.content)}
-                        className="msg-action-btn"
-                        title="Copy answer"
-                      >
-                        {copiedId === msg.id ? <Check size={12} color="#10b981" /> : <Copy size={12} />}
-                        <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
-                      </button>
-
-                      {isLatestAssistant && onRegenerate && !isLoading && (
-                        <button
-                          onClick={onRegenerate}
-                          className="msg-action-btn"
-                          title="Regenerate answer"
-                        >
-                          <RotateCw size={12} />
-                          <span>Regenerate</span>
-                        </button>
-                      )}
-
-                      {isError && onRetry && !isLoading && (
-                        <button
-                          onClick={onRetry}
-                          className="msg-action-btn"
-                          style={{ color: '#f87171' }}
-                          title="Retry failed message"
-                        >
-                          <RotateCw size={12} />
-                          <span>Retry</span>
-                        </button>
-                      )}
-
-                      {onDeleteMessage && (
-                        <button
-                          onClick={() => onDeleteMessage(msg.id)}
-                          className="msg-action-btn"
-                          title="Delete message"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
+            <div key={msg.id} style={{ width: '100%', userSelect: 'text', WebkitUserSelect: 'text' }}>
+              <MessageItem
+                msg={msg}
+                isLatestAssistant={isLatestAssistant}
+                isLoading={isLoading}
+                isCopied={copiedId === msg.id}
+                onCopy={handleCopyMessage}
+                onRegenerate={onRegenerate}
+                onRetry={onRetry}
+                onDeleteMessage={onDeleteMessage}
+                onInspectSource={setInspectedSource}
+                isSourcesExpanded={expandedSourcesMsgId === msg.id}
+                onToggleSources={handleToggleSources}
+              />
             </div>
           );
         })}
 
         {/* Streaming Active Indicator */}
         {isLoading && (
-          <div className="assistant-msg-container">
-            <div className="assistant-avatar">
+          <div className="assistant-msg-container" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
+            <div className="assistant-avatar" style={{ userSelect: 'none' }}>
               <img 
                 src="/assets/joyboy_logo.png" 
                 alt="JoyBoy" 
                 style={{ width: '20px', height: '20px', objectFit: 'contain' }} 
               />
             </div>
-            <div className="assistant-msg-body">
+            <div className="assistant-msg-body" style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
               {streamingContent ? (
-                <div>
+                <div style={{ userSelect: 'text', WebkitUserSelect: 'text' }}>
                   <MarkdownRenderer content={streamingContent} />
                   <span style={{ 
                     display: 'inline-block', 
@@ -328,11 +478,12 @@ export function MessageList({
                     height: '14px', 
                     backgroundColor: '#f59e0b', 
                     marginLeft: '4px', 
-                    verticalAlign: 'middle' 
+                    verticalAlign: 'middle',
+                    userSelect: 'none'
                   }}></span>
                 </div>
               ) : (
-                <div style={{ color: '#a1a1aa', fontSize: '13.5px' }}>
+                <div style={{ color: '#a1a1aa', fontSize: '13.5px', userSelect: 'none' }}>
                   Generating...
                 </div>
               )}
@@ -340,6 +491,19 @@ export function MessageList({
           </div>
         )}
       </div>
+
+      {/* Floating Smart Auto-Scroll Button */}
+      {showScrollBottom && (
+        <button
+          onClick={handleScrollToBottom}
+          className="scroll-bottom-pill"
+          title="Scroll to latest response"
+          type="button"
+        >
+          <ArrowDown size={13} strokeWidth={2.5} />
+          <span>{isLoading ? 'New response' : 'Scroll to bottom'}</span>
+        </button>
+      )}
 
       {/* Source Citation Modal */}
       {inspectedSource && (
@@ -410,7 +574,9 @@ export function MessageList({
               maxHeight: '260px',
               overflowY: 'auto',
               whiteSpace: 'pre-wrap',
-              fontFamily: 'monospace'
+              fontFamily: 'monospace',
+              userSelect: 'text',
+              WebkitUserSelect: 'text'
             }}>
               {inspectedSource.snippet || 'No excerpt available.'}
             </div>
@@ -428,7 +594,7 @@ export function MessageList({
         </div>
       )}
 
-      <div ref={bottomRef} />
+      <div ref={bottomRef} style={{ height: 1 }} />
     </div>
   );
 }

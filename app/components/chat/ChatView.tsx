@@ -37,6 +37,50 @@ export function ChatView({
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const tokenBufferRef = useRef<string>('');
+  const rafIdRef = useRef<number | null>(null);
+  const lastFlushTimeRef = useRef<number>(0);
+
+  // Cancel any animation frames on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleStreamToken = (token: string, accumulated: string) => {
+    tokenBufferRef.current = accumulated;
+    const now = performance.now();
+    // Batch UI updates every ~40ms (~25 fps) to eliminate main-thread freezing during high-speed generation
+    if (now - lastFlushTimeRef.current >= 40) {
+      lastFlushTimeRef.current = now;
+      if (rafIdRef.current) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      setStreamingContent(accumulated);
+    } else if (!rafIdRef.current) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        lastFlushTimeRef.current = performance.now();
+        setStreamingContent(tokenBufferRef.current);
+      });
+    }
+  };
+
+  const flushStreamTokenBuffer = () => {
+    if (rafIdRef.current) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    if (tokenBufferRef.current) {
+      setStreamingContent(tokenBufferRef.current);
+    }
+    tokenBufferRef.current = '';
+  };
 
   useEffect(() => {
     updateRAGStats();
@@ -196,6 +240,13 @@ export function ChatView({
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    flushStreamTokenBuffer();
+    setStreamingContent('');
+    setIsLoading(false);
+    globalStatus.setAIStatus('Ready');
+    if (activeId) {
+      setMessages(chatService.getMessages(activeId));
+    }
   };
 
   const handleRegenerate = async () => {
@@ -210,14 +261,14 @@ export function ChatView({
       await chatService.regenerateLastAnswer(activeId, {
         signal: abortControllerRef.current.signal,
         useStudyMaterials,
-        onToken: (_token, accumulated) => {
-          setStreamingContent(accumulated);
-        }
+        onToken: handleStreamToken
       });
+      flushStreamTokenBuffer();
       setMessages(chatService.getMessages(activeId));
       globalStatus.setAIStatus('Ready');
       onConversationsChange?.();
     } catch (err: any) {
+      flushStreamTokenBuffer();
       if (!err.message?.includes('cancelled')) {
         setErrorMsg('Regeneration Notice: ' + err.message);
         globalStatus.setAIStatus('Error');
@@ -259,16 +310,17 @@ export function ChatView({
       await chatService.sendMessage(targetConvId, text, {
         signal: abortControllerRef.current.signal,
         useStudyMaterials,
-        onToken: (_token, accumulated) => {
-          setStreamingContent(accumulated);
-        }
+        onToken: handleStreamToken
       });
+
+      flushStreamTokenBuffer();
 
       // Refresh messages
       setMessages(chatService.getMessages(targetConvId));
       globalStatus.setAIStatus('Ready');
       onConversationsChange?.();
     } catch (err: any) {
+      flushStreamTokenBuffer();
       if (!err.message?.includes('cancelled')) {
         setErrorMsg('Inference Notice: ' + err.message);
         globalStatus.setAIStatus('Error');
