@@ -12,9 +12,12 @@ export class ModelHardwareEstimator {
     customAvailableRamBytes?: number
   ): Promise<ModelHardwareEstimation> {
     const hw = await detectHardware();
+    const effectiveAvailableRam = hw.totalRamBytes
+      ? Math.max(hw.availableRamBytes || 0, hw.totalRamBytes * 0.5)
+      : (hw.availableRamBytes || 8 * 1024 * 1024 * 1024);
     const availableRam = customAvailableRamBytes !== undefined 
       ? customAvailableRamBytes 
-      : (hw.availableRamBytes || hw.totalRamBytes * 0.7 || 8 * 1024 * 1024 * 1024);
+      : effectiveAvailableRam;
 
     const fileSizeBytes = model.expectedSize || (model.path ? 2_000_000_000 : 0);
     // Estimated RAM needed: weights + KV buffer + execution overhead

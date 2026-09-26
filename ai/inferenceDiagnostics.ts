@@ -27,6 +27,15 @@ export interface InferenceDiagnosticsData {
   ramUsageBytes?: number | null;
   isFallback?: boolean;
   fallbackReason?: string | null;
+  // Phase 15 Section 5 verification fields:
+  provider?: string;
+  model?: string;
+  isMock?: boolean;
+  offline?: boolean;
+  conversationId?: string;
+  promptTokens?: number;
+  generatedTokens?: number;
+  generationSpeed?: number;
 }
 
 export type IssueCategory = 

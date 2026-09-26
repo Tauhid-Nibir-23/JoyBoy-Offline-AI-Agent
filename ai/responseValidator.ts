@@ -42,6 +42,17 @@ export function validateResponse(input: ResponseValidationInput): ResponseValida
     };
   }
 
+  // 1b. Obvious mock placeholder check (Phase 15 Section 13)
+  if (lower.includes('[mock response]') || lower.includes('i am a mock assistant') || lower.includes('mock study assistant')) {
+    issues.push('Obvious mock provider placeholder detected in assistant output');
+    return {
+      isValid: false,
+      issues,
+      retryNeeded: true,
+      correctedInstruction: 'Do NOT use mock responses. Answer directly and genuinely using your offline knowledge.'
+    };
+  }
+
   // 2. Check for severe repetition (repeated lines or repeated token loops)
   const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 25);
   const lineCounts = new Map<string, number>();

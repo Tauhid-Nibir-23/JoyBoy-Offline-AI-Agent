@@ -304,6 +304,7 @@ export class ModelManager {
   }
 
   public async autoSelectModel(): Promise<ModelProfile | null> {
+    await this.scanModels();
     const model3B = this.registeredModels.get(RECOMMENDED_3B_MODEL.id);
     const model05B = this.registeredModels.get(FALLBACK_05B_MODEL.id);
 
@@ -442,6 +443,13 @@ export class ModelManager {
     setSetting('model_name', model.name);
 
     return true;
+  }
+
+  public clearActiveModel(): void {
+    this.activeModelId = null;
+    setSetting('model_id', '');
+    setSetting('model_path', '');
+    setSetting('model_name', '');
   }
 
   /**

@@ -28,6 +28,7 @@ export interface DBMessage {
   conversation_id: string;
   role: 'system' | 'user' | 'assistant';
   content: string;
+  provider_id?: string | null;
   sources_json?: string | null;
   created_at: string;
 }
@@ -144,6 +145,7 @@ CREATE TABLE IF NOT EXISTS messages (
     conversation_id TEXT NOT NULL,
     role CHECK(role IN ('system', 'user', 'assistant')) NOT NULL,
     content TEXT NOT NULL,
+    provider_id TEXT,
     sources_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -432,6 +434,11 @@ export async function initDatabase(): Promise<boolean> {
         `);
       } catch (_) {}
 
+      // Phase 15: Ensure provider_id column exists on messages
+      try {
+        dbInstance.run('ALTER TABLE messages ADD COLUMN provider_id TEXT;');
+      } catch (_) {}
+
       // Verify schema: ensure required tables exist
       const checkResult = dbInstance.exec("SELECT name FROM sqlite_master WHERE type='table';");
       const tables = checkResult[0]?.values.map((v) => String(v[0])) || [];
@@ -590,6 +597,7 @@ export function getMessagesByConversationId(conversationId: string): DBMessage[]
     conversation_id: String(r.conversation_id),
     role: r.role as 'system' | 'user' | 'assistant',
     content: String(r.content),
+    provider_id: r.provider_id ? String(r.provider_id) : null,
     sources_json: r.sources_json ? String(r.sources_json) : null,
     created_at: String(r.created_at)
   }));
@@ -599,8 +607,8 @@ export const getMessagesByConversationIdFromDB = getMessagesByConversationId;
 
 export function insertMessageInDB(msg: DBMessage): DBMessage {
   executeQuery(
-    'INSERT INTO messages (id, conversation_id, role, content, sources_json, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-    [msg.id, msg.conversation_id, msg.role, msg.content, msg.sources_json || null, msg.created_at]
+    'INSERT INTO messages (id, conversation_id, role, content, provider_id, sources_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [msg.id, msg.conversation_id, msg.role, msg.content, msg.provider_id || null, msg.sources_json || null, msg.created_at]
   );
   // Touch conversation updated_at
   executeQuery('UPDATE conversations SET updated_at = ? WHERE id = ?', [msg.created_at, msg.conversation_id]);

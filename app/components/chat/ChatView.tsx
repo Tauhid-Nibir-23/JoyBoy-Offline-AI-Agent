@@ -56,8 +56,11 @@ export function ChatView({
     }
   }, [initialConversationId]);
 
-  const checkModelInstalled = () => {
-    const active = modelManager.getActiveModel();
+  const checkModelInstalled = async () => {
+    let active = modelManager.getActiveModel();
+    if (!active || !active.path) {
+      active = await modelManager.autoSelectModel();
+    }
     const hasModel = !!(active && active.path && (active.status === 'Ready' || active.status === 'Installed'));
     setIsModelInstalled(hasModel);
   };

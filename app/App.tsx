@@ -115,14 +115,9 @@ export default function App() {
           await modelManager.initialize();
           let active = modelManager.getActiveModel();
 
-          // Auto-select installed model if available and none selected
+          // Auto-select installed model if available and none selected (prioritizing Qwen 2.5 3B)
           if (!active || !active.path) {
-            const registered = modelManager.getRegisteredModels();
-            const installed = registered.find(m => (m.status === 'Ready' || m.status === 'Installed') && m.path);
-            if (installed) {
-              await modelManager.selectActiveModel(installed.id);
-              active = modelManager.getActiveModel();
-            }
+            active = await modelManager.autoSelectModel();
           }
 
           // Preload model if available
@@ -453,7 +448,7 @@ export default function App() {
               title="Click to view Model Manager"
             >
               <Cpu size={14} style={{ color: appStatus.model === 'Loaded' ? '#10b981' : '#f59e0b' }} />
-              <span>{activeModel?.name ? activeModel.name : (appStatus.model === 'Loaded' ? 'Local GGUF' : 'Demo Mode')}</span>
+              <span>{activeModel?.name ? `${activeModel.name} · Offline` : (appStatus.model === 'Loaded' ? 'Qwen 2.5 3B · Offline' : (getSetting('ai_provider') === 'mock' ? 'Demo Mode' : 'Local AI · Offline'))}</span>
               <ChevronDown size={13} style={{ opacity: 0.6 }} />
             </button>
           </div>

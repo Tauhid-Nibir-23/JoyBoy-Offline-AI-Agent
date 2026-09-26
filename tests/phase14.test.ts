@@ -494,7 +494,7 @@ A student holds a textbook while waiting for a classmate to return the notebook.
     // Test offline RAG context building
     const ragResult = await ragService.buildContext('What are the four necessary conditions of deadlock?', {
       filterDocumentIds: [docId],
-      limit: 3
+      maxResults: 3
     });
 
     expect(ragResult.sources.length).toBeGreaterThan(0);

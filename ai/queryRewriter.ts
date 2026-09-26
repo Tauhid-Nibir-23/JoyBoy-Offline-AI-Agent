@@ -307,6 +307,16 @@ export class QueryRewriter {
       /\b(exam\s*e|porikkha|exam\s+questions|important\s+topics|kon\s+gula\s+exam|exam\s+er\s+jonno)\b/i.test(lower) ||
       /(?:পরীক্ষায়|পরীক্ষায়|গুরুত্বপূর্ণ\s*টপিক)/.test(trimmed);
 
+    // 8b. Exam Writing Format: e.g. "exam e kivabe likhbo?", "exam format e daw"
+    const isExamWriting = /\b(exam\s*e\s*kivabe\s*likhbo|exam\s*format|exam\s*ready)\b/i.test(lower) ||
+      /(?:পরীক্ষায়\s*কীভাবে\s*লিখব|পরীক্ষার\s*ফরম্যাটে)/.test(trimmed);
+    if (isExamWriting) {
+      const topic = memory.activeSubtopic || memory.activeTopic || (memory.recentDocReferences[0] ? `the study topic from ${memory.recentDocReferences[0]}` : 'the active concept');
+      return mapResult(`Concise exam-ready answer, structured key points, definition, and bulleted summary for ${topic} suitable for writing in exams`, true, 'exam_topics', {
+        referencedTopic: topic
+      });
+    }
+
     if (isExamTopics) {
       const docName = memory.recentDocReferences[0] || memory.attachedDocuments?.[0];
       const topic = docName ? `the attached study material ${docName}` : (memory.activeSubtopic || memory.activeTopic || 'Operating Systems');
@@ -322,6 +332,41 @@ export class QueryRewriter {
       const docName = memory.recentDocReferences[0] || 'the study document';
       return mapResult(`Main topics, key concepts, and summaries from ${chapRef} of ${docName}`, true, 'DOCUMENT_LOOKUP', {
         chapterRef: chapRef
+      });
+    }
+
+    // 9b. Contextual concept explanation: e.g. "peripherals e floating number ta bujhao"
+    const contextConceptMatch = lower.match(/([a-z0-9_-]{3,20})\s+e\s+([a-z0-9\s_-]{3,30}?)\s*(?:ta|ti)?\s*(?:bujhao|explain\s+koro|bolo|shomporke)/i);
+    if (contextConceptMatch) {
+      const contextSubject = contextConceptMatch[1].trim();
+      const targetConcept = contextConceptMatch[2].trim();
+      memory.activeTopic = contextSubject;
+      memory.activeSubtopic = targetConcept;
+      return mapResult(
+        `Explain the ${targetConcept} concept in the context of ${contextSubject} in simple student-friendly language`,
+        true,
+        'EXPLAIN',
+        { referencedTopic: targetConcept }
+      );
+    }
+
+    // 9c. Previous concept reference: e.g. "ager ta abar bolo", "oita explain koro"
+    const isPreviousRef = /\b(ager\s*ta\s*abar\s*bolo|oita\s*explain\s*koro|ager\s*point\s*ta)\b/i.test(lower) ||
+      /(?:আগেরটা\s*আবার\s*বলো|ঐটা\s*বুঝিয়ে\s*দাও)/.test(trimmed);
+    if (isPreviousRef) {
+      const target = memory.previousTopic || memory.activeTopic || 'the previously discussed concept';
+      return mapResult(`Detailed explanation and recap of ${target} in simple terms`, true, 'EXPLAIN', {
+        referencedTopic: target
+      });
+    }
+
+    // 9d. Shorten this part: e.g. "ei part ta short kore daw", "short kore daw"
+    const isShortenPart = /\b(ei\s*part\s*ta\s*short|short\s*kore\s*daw|choto\s*kore\s*daw)\b/i.test(lower) ||
+      /(?:এই\s*অংশটা\s*সংক্ষেপ\s*করো)/.test(trimmed);
+    if (isShortenPart) {
+      const target = memory.activeSubtopic || memory.activeTopic || 'the active topic';
+      return mapResult(`Concise 2-3 sentence summary of the key points of ${target}`, true, 'SHORTEN', {
+        referencedTopic: target
       });
     }
 

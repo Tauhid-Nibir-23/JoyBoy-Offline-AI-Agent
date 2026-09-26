@@ -85,28 +85,39 @@ export class ChatService {
 
     const type = this.getProviderType();
 
+    // 1. Explicit mock provider mode (developer test mode only)
     if (type === 'mock') {
       this.lastResolvedProvider = this.mockProvider;
       return this.mockProvider;
     }
 
+    // 2. Explicit llamacpp mode
     if (type === 'llamacpp') {
       const isReady = await this.llamaProvider.isAvailable();
       if (isReady) {
         this.lastResolvedProvider = this.llamaProvider;
         return this.llamaProvider;
       }
-      // If user selected llama.cpp but local inference is unavailable, fall back safely to Mock
       this.lastResolvedProvider = this.mockProvider;
       return this.mockProvider;
     }
 
-    // 'auto' mode: Use local llama.cpp if ready, otherwise fallback to mock
-    const isReady = await this.llamaProvider.isAvailable();
-    if (isReady) {
+    // 3. 'auto' mode:
+    // If an active model is already selected, ALWAYS use real local provider
+    let active = modelManager.getActiveModel();
+
+    // In desktop application UI (Tauri window), automatically select primary model
+    if ((!active || !active.path) && typeof window !== 'undefined') {
+      await modelManager.autoSelectModel();
+      active = modelManager.getActiveModel();
+    }
+
+    if (active && active.path) {
       this.lastResolvedProvider = this.llamaProvider;
       return this.llamaProvider;
     }
+
+    // If local model is not active/installed and in headless test runner, use mock fallback
     this.lastResolvedProvider = this.mockProvider;
     return this.mockProvider;
   }
@@ -133,10 +144,15 @@ export class ChatService {
 
   public getActiveProviderSync(): { id: string; name: string; isLocalAI: boolean } {
     const provider = this.lastResolvedProvider;
+    const isLocal = provider.id === 'llamacpp';
+    const active = modelManager.getActiveModel();
+    const name = isLocal
+      ? (active?.name ? `${active.name} · Offline` : 'Qwen 2.5 3B · Offline')
+      : provider.name;
     return {
       id: provider.id,
-      name: provider.name,
-      isLocalAI: provider.id === 'llamacpp'
+      name,
+      isLocalAI: isLocal
     };
   }
 
@@ -231,6 +247,7 @@ export class ChatService {
         conversationId: m.conversation_id,
         role: m.role,
         content: m.content,
+        providerId: m.provider_id || (m.role === 'assistant' ? 'llamacpp' : undefined),
         createdAt: m.created_at,
         sources
       };
@@ -425,14 +442,19 @@ ${langPolicy}`;
     // Resolve active AI provider (LlamaCpp if model is present and valid, otherwise Mock fallback)
     const provider = await this.resolveProvider();
 
-    // Record inference diagnostics for safe developer observability
+    // Record inference diagnostics for safe developer observability (Phase 15 Section 5)
     const activeModel = modelManager.getActiveModel();
     const memoryState = conversationMemory.getMemory(conversationId);
     inferenceDiagnostics.record({
       timestamp: new Date().toISOString(),
-      modelName: activeModel?.name || (provider.id === 'llamacpp' ? 'Local GGUF' : 'Mock Provider'),
+      modelName: activeModel?.name || (provider.id === 'llamacpp' ? 'Qwen 2.5 3B Instruct' : 'Mock Provider'),
       modelPath: activeModel?.path,
       providerId: provider.id,
+      provider: provider.id === 'llamacpp' ? 'llama.cpp' : 'mock',
+      model: activeModel?.fileName || 'qwen2.5-3b-instruct-q4_k_m.gguf',
+      isMock: provider.id !== 'llamacpp',
+      offline: true,
+      conversationId,
       contextSize: assembledContext.contextTokensEstimate,
       maxTokens: options?.maxTokens || 512,
       temperature: options?.temperature || 0.4,
@@ -512,9 +534,9 @@ ${langPolicy}`;
           ? `${accumulatedText}\n\n*[Generation stopped by user]*`
           : '*[Generation stopped by user]*';
       } else {
-        // Clear, human-understandable error handling without cloud fallback
-        const friendlyError = err.message || 'An unexpected error occurred during local inference.';
-        assistantText = `⚠️ **Local AI Error:** ${friendlyError}`;
+        // Clear, human-understandable error handling without cloud fallback (Phase 15 Section 1)
+        const friendlyError = err.message || 'Local AI inference failed. Please check the model/llama.cpp status.';
+        assistantText = `⚠️ **Local AI Error:** Local AI inference failed. Please check the model/llama.cpp status. (${friendlyError})`;
       }
     }
 
@@ -526,8 +548,10 @@ ${langPolicy}`;
       if (currentDiag) {
         inferenceDiagnostics.record({
           ...currentDiag,
+          generationSpeed: recordedMetrics.tokensPerSecond,
           generationSpeedTokPerSec: recordedMetrics.tokensPerSecond,
-          firstTokenLatencyMs: recordedMetrics.firstTokenLatencyMs
+          firstTokenLatencyMs: recordedMetrics.firstTokenLatencyMs,
+          generatedTokens: recordedMetrics.tokenCount
         });
       }
     }
@@ -544,12 +568,13 @@ ${langPolicy}`;
       sources: usedSources.length > 0 ? usedSources : undefined
     };
 
-    // Save assistant message to SQLite with persisted source citations
+    // Save assistant message to SQLite with persisted source citations and provider_id
     insertMessageInDB({
       id: assistantMsg.id,
       conversation_id: assistantMsg.conversationId,
       role: assistantMsg.role,
       content: assistantMsg.content,
+      provider_id: assistantMsg.providerId || provider.id,
       sources_json: assistantMsg.sources ? JSON.stringify(assistantMsg.sources) : null,
       created_at: assistantMsg.createdAt
     });

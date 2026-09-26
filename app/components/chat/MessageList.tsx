@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, BookOpen, FileText, Copy, Check, RotateCw, AlertCircle, X, Trash2, Cpu, ArrowUpRight } from 'lucide-react';
 import { ChatMessage, ChatMessageSource } from '../../../ai/provider';
+import { chatService } from '../../../ai/chatService';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface MessageListProps {
@@ -80,7 +81,7 @@ export function MessageList({
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Cpu size={18} style={{ color: '#f59e0b', flexShrink: 0 }} />
               <div style={{ fontSize: '13px', color: '#e4e4e7', lineHeight: 1.4 }}>
-                <strong>Local AI model is not installed.</strong> Running in Demo / Mock Mode.
+                <strong>No local AI model loaded.</strong> {chatService.getProviderType() === 'mock' ? 'Running in Developer Mock Mode.' : 'Configure or scan GGUF models in Model Manager.'}
               </div>
             </div>
             {onOpenModelManager && (
@@ -137,8 +138,9 @@ export function MessageList({
       <div className="messages-inner-wrap">
         {messages.map((msg, index) => {
           const isUser = msg.role === 'user';
-          const isLocalAI = msg.providerId === 'llamacpp' || msg.content.includes('*Local AI');
-          const isError = !isUser && msg.content.includes('⚠️ **Local AI Error:**');
+          const isError = !isUser && (msg.content.includes('⚠️ **Local AI Error:**') || msg.content.includes('⚠️'));
+          const isMock = msg.providerId === 'mock' || chatService.getProviderType() === 'mock';
+          const isLocalAI = !isUser && !isError && !isMock;
           const isLatestAssistant = index === lastAssistantIdx;
 
           return (
@@ -180,7 +182,7 @@ export function MessageList({
                   </div>
 
                   <div className="assistant-msg-body">
-                    {/* Compact Status Tag */}
+                    {/* Compact Status Tag (Phase 15 truthful indicator) */}
                     <div style={{ 
                       fontSize: '11px', 
                       display: 'flex', 
@@ -189,12 +191,13 @@ export function MessageList({
                       color: isError ? '#f87171' : isLocalAI ? '#10b981' : '#f59e0b'
                     }}>
                       <span style={{ 
-                        width: '5px', 
-                        height: '5px', 
+                        width: '6px', 
+                        height: '6px', 
                         borderRadius: '50%', 
-                        backgroundColor: isError ? '#ef4444' : isLocalAI ? '#10b981' : '#f59e0b' 
+                        backgroundColor: isError ? '#ef4444' : isLocalAI ? '#10b981' : '#f59e0b',
+                        boxShadow: isLocalAI ? '0 0 6px rgba(16, 185, 129, 0.4)' : 'none'
                       }}></span>
-                      <span>{isError ? 'Inference Notice' : isLocalAI ? 'JoyBoy AI (GGUF)' : 'Demo / Mock Mode'}</span>
+                      <span>{isError ? 'Local AI Error' : isLocalAI ? 'Qwen 2.5 3B · Offline' : 'Demo / Mock Mode'}</span>
                     </div>
 
                     <MarkdownRenderer content={msg.content} />

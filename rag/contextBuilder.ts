@@ -28,17 +28,51 @@ export class ContextBuilder {
 
     const isBengaliOrBanglish = targetLang === 'bn' || targetLang === 'banglish';
 
-    const ungroundedNotice = isBengaliOrBanglish
-      ? 'এই informationটা attached material-এ পাইনি। চাইলে আমি general knowledge দিয়ে explain করতে পারি।'
-      : 'No sufficiently relevant material was found in your study documents.';
+    // Extract core content keywords from user question to check actual relevance
+    // Exclude framing words, meta terms, and general domain/document context words
+    const framingStopwords = new Set([
+      'what', 'explain', 'bujhao', 'bolo', 'kore', 'this', 'that', 'from', 'with', 'about',
+      'concept', 'study', 'material', 'lecture', 'notes', 'simple', 'student', 'friendly',
+      'language', 'detail', 'chapter', 'document', 'attached', 'course', 'peripherals', 'interfacing'
+    ]);
 
-    if (!searchResults || searchResults.length === 0) {
+    const contentKeywords = userQuestion
+      .toLowerCase()
+      .split(/[\s,.;:!?()[\]{}"']+/)
+      .filter((w) => w.length >= 4 && !framingStopwords.has(w));
+
+    // Filter chunks by genuine relevance: either high semantic similarity (>= 0.22)
+    // or keyword overlap with queried content terms
+    const trulyRelevantResults = (searchResults || []).filter((res) => {
+      if (res.similarity >= 0.22) return true;
+      if (contentKeywords.length > 0) {
+        const textLower = res.chunk.text.toLowerCase();
+        const headingLower = (res.chunk.heading || '').toLowerCase();
+        const hasKeyword = contentKeywords.some((kw) => textLower.includes(kw) || headingLower.includes(kw));
+        if (hasKeyword && res.similarity >= 0.08) return true;
+      }
+      return false;
+    });
+
+    // Extract primary concept name from query if present
+    const conceptMatch = userQuestion.match(/(?:e\s+)?([A-Za-z0-9\s-]{3,25}?)\s*(?:ta|ti)?\s*(?:bujhao|explain|bolo|ki|shomporke)/i);
+    const conceptName = conceptMatch ? conceptMatch[1].trim() : '';
+
+    const ungroundedNotice = isBengaliOrBanglish
+      ? (conceptName 
+          ? `এই PDF-এ "${conceptName}" সম্পর্কে relevant information পাইনি। চাইলে আমি general knowledge দিয়ে explain করতে পারি।`
+          : 'এই PDF-এ এই টপিক সম্পর্কে relevant information পাইনি। চাইলে আমি general knowledge দিয়ে explain করতে পারি।')
+      : (conceptName 
+          ? `No sufficiently relevant material on "${conceptName}" was found in your study documents.`
+          : 'No sufficiently relevant material was found in your study documents.');
+
+    if (trulyRelevantResults.length === 0) {
       return {
         augmentedUserPrompt: userQuestion,
         sources: [],
         usedKnowledge: false,
         systemInstruction:
-          'You are an offline personal study assistant. If you couldn\'t find relevant information in your imported study materials, note: "No sufficiently relevant material was found in your study documents." (or in Bengali: "এই informationটা attached material-এ পাইনি। চাইলে আমি general knowledge দিয়ে explain করতে পারি.") and answer helpfully using your general offline knowledge.\n\n' +
+          `You are an offline personal study assistant. If you couldn't find relevant information in your imported study materials, note: "${ungroundedNotice}" and answer helpfully using your general offline knowledge without fabricating citations.\n\n` +
           langPolicy
       };
     }
@@ -47,7 +81,7 @@ export class ContextBuilder {
     const materialSections: string[] = [];
     let accumulatedTokens = 0;
 
-    for (const res of searchResults) {
+    for (const res of trulyRelevantResults) {
       const chunk = res.chunk;
       const citation: RAGSourceCitation = {
         documentId: chunk.documentId,
