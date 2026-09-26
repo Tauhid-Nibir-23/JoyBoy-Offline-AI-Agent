@@ -6,6 +6,13 @@ export type DBStatus = 'Ready' | 'Connecting' | 'Error';
 export type RAGStatus = 'Ready' | 'Indexing' | 'Error';
 export type ModelStatus = 'Loaded' | 'Not Loaded';
 
+export type LocalAIRuntimeState = 
+  | 'LOCAL_AI_READY'
+  | 'LOCAL_AI_LOADING'
+  | 'LOCAL_AI_ERROR'
+  | 'LOCAL_AI_MISSING'
+  | 'LOCAL_AI_STOPPED';
+
 export interface AppGlobalStatus {
   ai: AIStatus;
   aiMessage?: string;
@@ -15,6 +22,8 @@ export interface AppGlobalStatus {
   ragMessage?: string;
   model: ModelStatus;
   modelName?: string;
+  localAIState: LocalAIRuntimeState;
+  offlineStatus: string;
 }
 
 type StatusListener = (status: AppGlobalStatus) => void;
@@ -24,7 +33,9 @@ class GlobalStatusManager {
     ai: 'Ready',
     db: 'Ready',
     rag: 'Ready',
-    model: 'Not Loaded'
+    model: 'Not Loaded',
+    localAIState: 'LOCAL_AI_READY',
+    offlineStatus: 'Offline'
   };
 
   private listeners: Set<StatusListener> = new Set();
@@ -40,6 +51,14 @@ class GlobalStatusManager {
 
   public setAIStatus(status: AIStatus, message?: string): void {
     this.update({ ai: status, aiMessage: message });
+  }
+
+  public setLocalAIState(state: LocalAIRuntimeState, message?: string): void {
+    this.update({ localAIState: state, aiMessage: message });
+  }
+
+  public setOfflineStatus(status: string): void {
+    this.update({ offlineStatus: status });
   }
 
   public setDBStatus(status: DBStatus, message?: string): void {

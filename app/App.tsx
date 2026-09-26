@@ -469,9 +469,9 @@ export default function App() {
               <span>RAG {appStatus.rag}</span>
             </div>
 
-            <div className="subtle-status-item" style={{ opacity: 0.7 }}>
-              <span className={`status-dot ${sysStatus.isOnline ? 'dot-green' : 'dot-red'}`} />
-              <span>{sysStatus.isOnline ? 'Online' : 'Offline'}</span>
+            <div className="subtle-status-item" style={{ opacity: 0.9 }} title="Offline-First Study AI — Local Inference Only">
+              <span className="status-dot dot-green" />
+              <span>Offline</span>
             </div>
           </div>
         </header>

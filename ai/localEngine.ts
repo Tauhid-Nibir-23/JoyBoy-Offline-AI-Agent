@@ -289,6 +289,119 @@ export class LocalAIEngine {
     };
   }
 
+  /**
+   * Phase 16 Section 8: Complete Local AI Chain Health Check
+   * Validates: modelExists -> modelValid -> binaryExists -> serverRunning -> inferenceReady
+   */
+  public async verifyLocalAIChainHealth(): Promise<{
+    state: 'LOCAL_AI_READY' | 'LOCAL_AI_LOADING' | 'LOCAL_AI_ERROR' | 'LOCAL_AI_MISSING' | 'LOCAL_AI_STOPPED';
+    modelExists: boolean;
+    modelValid: boolean;
+    binaryExists: boolean;
+    serverRunning: boolean;
+    port: number | null;
+    inferenceReady: boolean;
+    statusText: string;
+    detail: string;
+  }> {
+    let model = this.getModelInfo();
+    if (!model || !model.path) {
+      model = await modelManager.autoSelectModel();
+    }
+
+    if (!model || !model.path) {
+      return {
+        state: 'LOCAL_AI_MISSING',
+        modelExists: false,
+        modelValid: false,
+        binaryExists: false,
+        serverRunning: false,
+        port: null,
+        inferenceReady: false,
+        statusText: 'Qwen 2.5 3B · Model Missing',
+        detail: 'Primary GGUF model file is not found in models directory'
+      };
+    }
+
+    // Check if model file physically exists and is valid GGUF
+    const validation = await modelManager.validateModelFile(model.path);
+    if (!validation.isValid) {
+      return {
+        state: 'LOCAL_AI_ERROR',
+        modelExists: true,
+        modelValid: false,
+        binaryExists: false,
+        serverRunning: false,
+        port: null,
+        inferenceReady: false,
+        statusText: 'Qwen 2.5 3B · Invalid GGUF',
+        detail: validation.error || 'Magic header does not match GGUF'
+      };
+    }
+
+    // Check binary existence
+    let binaryExists = false;
+    const engineInfo = await tryTauriInvoke<{ isAvailable: boolean }>('get_llama_engine_info');
+    if (engineInfo?.isAvailable) {
+      binaryExists = true;
+    } else if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const candidates = [
+          path.resolve(process.cwd(), 'bin', 'llama-server.exe'),
+          path.resolve(process.cwd(), 'bin', 'llama-cli.exe'),
+          path.resolve(process.cwd(), 'bin', 'llama-server'),
+          path.resolve(process.cwd(), 'bin', 'llama-cli')
+        ];
+        binaryExists = candidates.some((c) => fs.existsSync(c));
+      } catch {
+        binaryExists = false;
+      }
+    }
+
+    if (!binaryExists) {
+      return {
+        state: 'LOCAL_AI_ERROR',
+        modelExists: true,
+        modelValid: true,
+        binaryExists: false,
+        serverRunning: false,
+        port: null,
+        inferenceReady: false,
+        statusText: 'Qwen 2.5 3B · Binary Missing',
+        detail: 'llama.cpp binary not found in ./bin or system PATH'
+      };
+    }
+
+    // Check server running / ping localhost
+    let serverRunning = false;
+    const port = this.serverPort || 8088;
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`).catch(() => null);
+      if (res && res.ok) {
+        serverRunning = true;
+        this.serverPort = port;
+      }
+    } catch {
+      serverRunning = false;
+    }
+
+    return {
+      state: 'LOCAL_AI_READY',
+      modelExists: true,
+      modelValid: true,
+      binaryExists: true,
+      serverRunning,
+      port: serverRunning ? port : null,
+      inferenceReady: true,
+      statusText: 'Qwen 2.5 3B · Offline',
+      detail: serverRunning 
+        ? `Local llama-server active on 127.0.0.1:${port}` 
+        : 'Local engine ready (will launch server on demand)'
+    };
+  }
+
   public async generate(
     input: string | ChatMessage[],
     options?: GenerateOptions

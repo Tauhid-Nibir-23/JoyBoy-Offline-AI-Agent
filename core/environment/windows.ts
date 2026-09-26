@@ -81,5 +81,10 @@ export const windowsHardwareAdapter = new WindowsHardwareAdapter();
 export const windowsEnvironment = {
   osName: 'Windows',
   formatPath: (p: string) => p.replace(/\//g, '\\'),
-  whichCommand: 'where'
+  whichCommand: 'where',
+  pathDelimiter: ';',
+  executableExtension: '.exe',
+  serverBinary: 'llama-server.exe',
+  cliBinary: 'llama-cli.exe',
+  terminationSignal: 'SIGKILL'
 };

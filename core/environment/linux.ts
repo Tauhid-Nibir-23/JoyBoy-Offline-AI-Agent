@@ -81,5 +81,10 @@ export const linuxHardwareAdapter = new LinuxHardwareAdapter();
 export const linuxEnvironment = {
   osName: 'Linux',
   formatPath: (p: string) => p.replace(/\\/g, '/'),
-  whichCommand: 'which'
+  whichCommand: 'which',
+  pathDelimiter: ':',
+  executableExtension: '',
+  serverBinary: 'llama-server',
+  cliBinary: 'llama-cli',
+  terminationSignal: 'SIGTERM'
 };
