@@ -1,0 +1,65 @@
+{
+  "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+  "modelSizeGb": 1.96,
+  "contextSize": 2048,
+  "threads": 4,
+  "loadTimeMs": 2562,
+  "ramRssMb": 79,
+  "benchmarkRuns": [
+    {
+      "promptId": "T1",
+      "name": "What is an Operating System?",
+      "userPrompt": "What is an Operating System? Explain simply in 2 sentences.",
+      "tokensGenerated": 40,
+      "promptTokens": 40,
+      "promptTokSec": 76,
+      "genTokSec": 12.9,
+      "totalTimeMs": 3562,
+      "response": "An operating system is like the manager of your computer - it handles all the basic tasks and resources, like managing files, controlling hardware, and coordinating software applications to ensure they all work together smoothly."
+    },
+    {
+      "promptId": "T2",
+      "name": "Explain deadlock in simple Bengali.",
+      "userPrompt": "Explain deadlock in simple Bengali.",
+      "tokensGenerated": 180,
+      "promptTokens": 35,
+      "promptTokSec": 54.2,
+      "genTokSec": 13.1,
+      "totalTimeMs": 13870,
+      "response": "দেখা যাক কী হয় যখন বাড়া বাড়া মুখ দিয়ে কাজ করে এবং সেই কাজের জন্য সব মুখ ব্যবহার করে। এই কাজ করার সময় একজন বাড়া বাড়া মুখ দিয়ে কাজ করছে এবং সেই মুখের জন্য আর এ"
+    },
+    {
+      "promptId": "T3",
+      "name": "What are the four necessary conditions of deadlock?",
+      "userPrompt": "What are the four necessary conditions of deadlock? List them concisely.",
+      "tokensGenerated": 31,
+      "promptTokens": 42,
+      "promptTokSec": 71.3,
+      "genTokSec": 12.8,
+      "totalTimeMs": 2629,
+      "response": "The four necessary conditions of deadlock are:\n\n1. Mutual Exclusion\n2. Hold and Wait\n3. No Preemption\n4. Circular Wait"
+    },
+    {
+      "promptId": "T4",
+      "name": "Give a real-life example of Hold and Wait.",
+      "userPrompt": "Give a real-life example of the Hold and Wait condition in deadlock.",
+      "tokensGenerated": 180,
+      "promptTokens": 41,
+      "promptTokSec": 67.3,
+      "genTokSec": 13.2,
+      "totalTimeMs": 13827,
+      "response": "Certainly! Let's consider a real-life example of the Hold and Wait condition in the context of a deadlock scenario. This example will be based on a system where multiple processes (or threads) are trying to access shared resources, and the system is prone to deadlock.\n\n### Example Scenario: Database Access\n\nImagine a system where multiple processes (e.g., database queries) need to access a shared database. Each process needs to acquire a lock on a specific table before it can proceed. The database has a limited number of locks, and each process can only hold one lock at a time.\n\n### Processes and Resources\n\n- **Process A**: Needs to lock Table 1.\n- **Process B**: Needs to lock Table 2.\n- **Process C**: Needs to lock Table 1.\n- **Process D**: Needs to lock Table 2.\n\n### Locking Sequence\n\n1. **Process A"
+    },
+    {
+      "promptId": "T5",
+      "name": "Make 3 MCQs about Hold and Wait.",
+      "userPrompt": "Make 3 MCQs specifically about the Hold and Wait condition in operating systems.",
+      "tokensGenerated": 180,
+      "promptTokens": 44,
+      "promptTokSec": 52.7,
+      "genTokSec": 13.3,
+      "totalTimeMs": 13896,
+      "response": "Certainly! Below are three multiple-choice questions (MCQs) specifically about the Hold and Wait condition in operating systems:\n\n1. **Which of the following best describes the Hold and Wait condition in operating systems?**\n   - A) A process is in the ready queue but cannot be scheduled because there are no resources available to satisfy its request.\n   - B) A process is in the running state and has all the resources it needs.\n   - C) A process is waiting for a resource that another process is holding.\n   - D) A process is waiting for a resource that is not currently available.\n\n2. **In the context of the Hold and Wait condition, which of the following scenarios correctly illustrates this condition?**\n   - A) A process is in the ready queue and has all the resources it needs.\n   - B) A process is waiting for a resource that another process is"
+    }
+  ]
+}

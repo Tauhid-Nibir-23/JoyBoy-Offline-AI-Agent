@@ -146,11 +146,16 @@ pub fn check_llama_engine() -> LlamaEngineInfo {
         let output = cmd.arg("--version").output();
 
         let ver = output.as_ref().ok().and_then(|out| {
-            if out.status.success() {
-                let out_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                let err_str = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                let v = if !out_str.is_empty() { out_str } else { err_str };
-                if v.is_empty() { None } else { Some(v) }
+            // Some llama.cpp builds return non-zero exit for --version while still
+            // outputting version info to stderr. Accept version from either stream.
+            let out_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let err_str = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let combined = if !out_str.is_empty() { out_str } else { err_str };
+            // Check if the output contains a recognizable version string
+            if combined.contains("version") || combined.contains("build") || combined.contains("llama") {
+                Some(combined)
+            } else if !combined.is_empty() && out.status.success() {
+                Some(combined)
             } else {
                 None
             }
@@ -242,7 +247,8 @@ pub fn start_llama_server(
         if parent.exists() {
             cmd.current_dir(parent);
             if let Ok(current_path) = std::env::var("PATH") {
-                let new_path = format!("{};{}", parent.display(), current_path);
+                let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+                let new_path = format!("{}{}{}", parent.display(), sep, current_path);
                 cmd.env("PATH", new_path);
             }
         }
@@ -254,6 +260,7 @@ pub fn start_llama_server(
         "--host", "127.0.0.1",
         "-t", &th,
         "-ngl", &ngl,
+        "-c", "2048",
     ]);
 
     let child = cmd.spawn().map_err(|e| format!("Failed to spawn llama-server: {}", e))?;
@@ -330,7 +337,8 @@ pub fn run_inference(
         if parent.exists() {
             cmd.current_dir(parent);
             if let Ok(current_path) = std::env::var("PATH") {
-                let new_path = format!("{};{}", parent.display(), current_path);
+                let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+                let new_path = format!("{}{}{}", parent.display(), sep, current_path);
                 cmd.env("PATH", new_path);
             }
         }
@@ -345,6 +353,8 @@ pub fn run_inference(
         &tokens,
         "--temp",
         &temp,
+        "-t", "4",
+        "-c", "2048",
         "--no-display-prompt",
     ]);
 

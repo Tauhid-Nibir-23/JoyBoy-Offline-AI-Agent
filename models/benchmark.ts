@@ -15,6 +15,12 @@ export interface ModelBenchmarkResult {
   timestamp: string;
   status: 'passed' | 'failed';
   error?: string;
+  cpuModel?: string;
+  osName?: string;
+  threads?: number;
+  contextSize?: number;
+  modelFilename?: string;
+  promptTokSec?: number;
 }
 
 export interface BenchmarkPromptItem {
@@ -38,6 +44,22 @@ export const STUDY_BENCHMARK_PROMPTS: BenchmarkPromptItem[] = [
   { id: 'st_8', category: 'Study', prompt: 'Explain this in exam-friendly language.' },
   { id: 'st_9', category: 'Study', prompt: 'Make 3 MCQs.' },
   { id: 'st_10', category: 'Study', prompt: 'Summarize this topic in 5 points.' }
+];
+
+export const PHASE13_STUDY_BENCHMARK_PROMPTS: BenchmarkPromptItem[] = [
+  { id: 'p13_basic_1', category: 'Basic Knowledge', prompt: 'What is an Operating System?' },
+  { id: 'p13_bengali_2', category: 'Basic Knowledge', prompt: 'ডেডলক কী? সহজ করে বুঝাও।' },
+  { id: 'p13_banglish_3', category: 'Basic Knowledge', prompt: 'deadlock ki? eta easy kore bujhao' },
+  { id: 'p13_followup_4', category: 'Reasoning', prompt: '4 ta condition bolo' },
+  { id: 'p13_followup_5', category: 'Reasoning', prompt: '2 number ta easy kore bujhao' },
+  { id: 'p13_followup_6', category: 'Reasoning', prompt: 'real life example daw' },
+  { id: 'p13_followup_7', category: 'Study', prompt: 'exam e kivabe likhbo?' },
+  { id: 'p13_reasoning_8', category: 'Reasoning', prompt: 'Why does deadlock happen?' },
+  { id: 'p13_study_9', category: 'Study', prompt: 'এই topic থেকে 5টা MCQ বানাও' },
+  { id: 'p13_short_10', category: 'Study', prompt: '2 marks er jonno short answer daw' },
+  { id: 'p13_pdf_11', category: 'Study', prompt: 'ei PDF theke deadlock ta bujhao' },
+  { id: 'p13_pdf_12', category: 'Study', prompt: 'ager point ta aro easy kore bolo' },
+  { id: 'p13_pdf_13', category: 'Study', prompt: 'exam e kon part ta important?' }
 ];
 
 export interface BenchmarkPromptResult {
@@ -65,6 +87,12 @@ export interface ComprehensiveBenchmarkResult {
   approxRamBytes: number | null;
   status: 'passed' | 'failed';
   results: BenchmarkPromptResult[];
+  cpuModel?: string;
+  osName?: string;
+  threads?: number;
+  contextSize?: number;
+  modelFilename?: string;
+  averagePromptTokSec?: number;
 }
 
 export interface ModelComparisonMetrics {
@@ -188,8 +216,17 @@ export class ModelBenchmarkService {
       const generationTokSec = parseFloat((estimatedTokens / generationDurationSec).toFixed(1));
 
       let approxRamBytes: number | null = null;
-      if (typeof process !== 'undefined' && process.memoryUsage) {
-        approxRamBytes = process.memoryUsage().rss;
+      let cpuModel: string = 'Unknown CPU';
+      let osName: string = 'Unknown OS';
+      if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+        try {
+          const os = await import('os');
+          cpuModel = os.cpus()?.[0]?.model || cpuModel;
+          osName = `${os.type()} ${os.release()}`;
+          approxRamBytes = process.memoryUsage ? process.memoryUsage().rss : null;
+        } catch {
+          // ignore
+        }
       }
 
       const result: ModelBenchmarkResult = {
@@ -202,7 +239,12 @@ export class ModelBenchmarkService {
         totalDurationMs,
         approxRamBytes,
         timestamp: new Date().toISOString(),
-        status: 'passed'
+        status: 'passed',
+        cpuModel,
+        osName,
+        threads: 4,
+        contextSize: 2048,
+        modelFilename: modelId.includes('3b') ? 'qwen2.5-3b-instruct-q4_k_m.gguf' : 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
       };
 
       this.saveBenchmark(result);
@@ -335,8 +377,17 @@ export class ModelBenchmarkService {
     const avgSpeed = parseFloat((speedSum / count).toFixed(1));
 
     let approxRamBytes: number | null = null;
-    if (typeof process !== 'undefined' && process.memoryUsage) {
-      approxRamBytes = process.memoryUsage().rss;
+    let cpuModel: string = 'Unknown CPU';
+    let osName: string = 'Unknown OS';
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+      try {
+        const os = await import('os');
+        cpuModel = os.cpus()?.[0]?.model || cpuModel;
+        osName = `${os.type()} ${os.release()}`;
+        approxRamBytes = process.memoryUsage ? process.memoryUsage().rss : null;
+      } catch {
+        // ignore
+      }
     }
 
     const compResult: ComprehensiveBenchmarkResult = {
@@ -350,7 +401,12 @@ export class ModelBenchmarkService {
       totalResponseTokens,
       approxRamBytes,
       status: results.every(r => r.validationPassed) ? 'passed' : 'failed',
-      results
+      results,
+      cpuModel,
+      osName,
+      threads: 4,
+      contextSize: 2048,
+      modelFilename: modelId.includes('3b') ? 'qwen2.5-3b-instruct-q4_k_m.gguf' : 'qwen2.5-0.5b-instruct-q4_k_m.gguf'
     };
 
     this.saveComprehensiveBenchmark(compResult);

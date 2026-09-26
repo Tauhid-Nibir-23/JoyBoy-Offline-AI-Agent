@@ -148,15 +148,16 @@ export class LocalAIEngine {
       });
 
       if (port) {
-        // Wait for server /health to become ready
-        for (let i = 0; i < 30; i++) {
-          await new Promise((r) => setTimeout(r, 200));
+        // Wait for server /health to become ready (up to ~30s for large models on slow hardware)
+        for (let i = 0; i < 60; i++) {
+          await new Promise((r) => setTimeout(r, 500));
           const check = await fetch(`http://127.0.0.1:${port}/health`).catch(() => null);
           if (check && check.ok) {
             this.serverPort = port;
             return true;
           }
         }
+        // Server started but health not responding after 30s — still set port, it may be loading
         this.serverPort = port;
         return true;
       }
@@ -178,20 +179,23 @@ export class LocalAIEngine {
         const srvPath = path.resolve(process.cwd(), 'bin', process.platform === 'win32' ? 'llama-server.exe' : 'llama-server');
         if (fs.existsSync(srvPath)) {
           const binDir = path.dirname(srvPath);
+          const pathSep = process.platform === 'win32' ? ';' : ':';
           const child = spawn(srvPath, [
             '-m', modelPath,
             '--port', '8088',
             '--host', '127.0.0.1',
-            '-t', String(this.config.cpuThreads)
+            '-t', String(this.config.cpuThreads),
+            '-c', String(this.config.contextLength)
           ], {
             cwd: binDir,
-            env: { ...process.env, PATH: `${binDir};${process.env.PATH || ''}` },
+            env: { ...process.env, PATH: `${binDir}${pathSep}${process.env.PATH || ''}` },
             detached: true,
             stdio: 'ignore'
           });
           child.unref();
-          for (let i = 0; i < 25; i++) {
-            await new Promise((r) => setTimeout(r, 200));
+          // Wait up to ~30 seconds for server health (large models on i5 8th Gen)
+          for (let i = 0; i < 60; i++) {
+            await new Promise((r) => setTimeout(r, 500));
             const check = await fetch('http://127.0.0.1:8088/health').catch(() => null);
             if (check && check.ok) {
               this.serverPort = 8088;
