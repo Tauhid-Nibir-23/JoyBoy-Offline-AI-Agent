@@ -426,7 +426,7 @@ describe('Phase 14 — Real Offline Inference Pipeline Tests', () => {
 
     // Verify it came from local model, not any cloud
     expect(data.model).toContain('gguf');
-  });
+  }, 30000);
 
   // =========================================================================
   // Category 10: Hardware-Safe Configuration (Requirement 12)

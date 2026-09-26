@@ -171,7 +171,14 @@ export class QueryRewriter {
       }
 
       if (itemNum > 0) {
-        const referencedItem = conversationMemory.resolveReferencedItem(conversationId, itemNum);
+        const referencedItem = 
+          (conversationId ? conversationMemory.resolveReferencedItem(conversationId, itemNum) : null) || 
+          memory.enumeratedItems?.[itemNum.toString()] ||
+          (memory.enumeratedQuestions?.[itemNum.toString()] ? {
+            number: itemNum,
+            title: memory.enumeratedQuestions[itemNum.toString()].split(/[:\-–]/)[0].replace(/\*\*/g, '').trim(),
+            text: memory.enumeratedQuestions[itemNum.toString()]
+          } : null);
         const itemTitle = referencedItem?.title || `Item ${itemNum}`;
         const topicContext = memory.activeTopic ? ` (${memory.activeTopic})` : '';
 
@@ -315,6 +322,63 @@ export class QueryRewriter {
       return mapResult(`Concise exam-ready answer, structured key points, definition, and bulleted summary for ${topic} suitable for writing in exams`, true, 'exam_topics', {
         referencedTopic: topic
       });
+    }
+
+    // 8c. Marks-based Exam Question Format: e.g. "5 marks er answer daw", "2 marks er jonno short answer daw", "10 marks question"
+    const marksMatch = lower.match(/\b([0-9১-৯]+)\s*(?:marks?|mark|নম্বর|নম্বরের)\b/i);
+    if (marksMatch) {
+      let mark = parseInt(marksMatch[1], 10);
+      if (isNaN(mark) && bengaliNumerals[marksMatch[1]]) mark = bengaliNumerals[marksMatch[1]];
+      const topic = memory.activeSubtopic || memory.activeTopic || 'the active concept';
+      if (mark && mark <= 3) {
+        return mapResult(`Concise ${mark}-mark exam answer for ${topic} containing precise definition, key principle, and direct explanation in 2-4 sentences`, true, 'SHORTEN', {
+          referencedTopic: topic
+        });
+      } else {
+        return mapResult(`Comprehensive ${mark || 5}-mark university exam answer for ${topic} with clear heading, definition, core concepts, bullet points, and practical example`, true, 'exam_topics', {
+          referencedTopic: topic
+        });
+      }
+    }
+
+    // 8d. Types, States, Conditions: e.g. "types gula bolo", "process state gula bolo", "4 ta condition bolo"
+    const isTypesOrStatesOrConditions = 
+      /\b(types?\s+gula|type\s+gula|types|state\s+gula|states?\s+gula|states?|condition\s+gula|conditions?)\s*(?:bolo|bujhao|explain\s+koro|ki\s*ki|list\s+koro)?\b/i.test(lower) ||
+      /\b[0-9১-৯]+\s*(?:ta|ti)?\s*(?:condition|state|type)\b/i.test(lower);
+    if (isTypesOrStatesOrConditions && !lower.includes('what is') && !lower.includes('explain ')) {
+      const topic = memory.activeSubtopic || memory.activeTopic || 'the active study topic';
+      if (lower.includes('state')) {
+        return mapResult(`Explain the different states of ${topic} (such as New, Ready, Running, Waiting, Terminated) with state transitions and numbered list`, true, 'EXPLAIN', { referencedTopic: topic });
+      }
+      if (lower.includes('condition')) {
+        return mapResult(`Explain the 4 necessary conditions for ${topic} (Mutual Exclusion, Hold and Wait, No Preemption, Circular Wait) in a clear numbered list`, true, 'EXPLAIN', { referencedTopic: topic });
+      }
+      return mapResult(`Explain the different types, categories, and classifications of ${topic} with a clear numbered list`, true, 'EXPLAIN', { referencedTopic: topic });
+    }
+
+    // 8e. Viva Voce Questions: e.g. "viva question daw", "viva te ki dhoron er question ashbe"
+    const isViva = /\b(viva|oral\s+exam|ভাইভা)\b/i.test(lower);
+    if (isViva) {
+      const topic = memory.activeSubtopic || memory.activeTopic || 'core study concepts';
+      return mapResult(`High-yield viva voce questions and short crisp model answers for ${topic}`, true, 'QUESTION_GENERATION', { referencedTopic: topic });
+    }
+
+    // 8f. Differences / Comparison: e.g. "Deadlock ar starvation er difference bolo"
+    const isDiff = /\b(difference|parthokko|তুলনা|পার্থক্য|vs|versus)\b/i.test(lower);
+    if (isDiff) {
+      const diffMatch = lower.match(/([a-z\s_-]{3,25})\s+(?:ar|and|o|vs|versus)\s+([a-z\s_-]{3,25})\s+(?:er\s+)?(?:difference|parthokko)/i);
+      if (diffMatch) {
+        const itemA = diffMatch[1].trim();
+        const itemB = diffMatch[2].trim();
+        return mapResult(`Detailed comparison and key differences between ${itemA} and ${itemB} with comparison table and key points`, true, 'COMPARE', { referencedTopic: `${itemA} vs ${itemB}` });
+      }
+    }
+
+    // 8g. Quick Revision / Recap: e.g. "Exam er age quick revision daw", "quick revision"
+    const isRevision = /\b(revision|quick\s+revision|recap|রিভিশন)\b/i.test(lower);
+    if (isRevision) {
+      const topic = memory.activeSubtopic || memory.activeTopic || 'the study topic';
+      return mapResult(`Quick high-yield revision bullet points summarizing key formulas, definitions, and takeaways for ${topic}`, true, 'SUMMARIZE', { referencedTopic: topic });
     }
 
     if (isExamTopics) {

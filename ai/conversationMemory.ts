@@ -444,9 +444,14 @@ export class ConversationMemoryManager {
         entities: ['process scheduling', 'Round Robin', 'FCFS', 'SJF', 'time quantum', 'preemption']
       },
       {
-        pattern: /\b(process|thread|pcb|process\s+control\s+block)\b/i,
-        topic: 'Operating System Process',
-        entities: ['process', 'thread', 'PCB', 'context switch', 'fork()', 'exec()']
+        pattern: /\b(process\s+state|process\s+states|new\s+ready\s+running|pcb|process\s+control\s+block)\b/i,
+        topic: 'Process',
+        entities: ['process', 'process state', 'PCB', 'context switch', 'fork()', 'exec()']
+      },
+      {
+        pattern: /\b(operating\s+system|os)\b/i,
+        topic: 'Operating System',
+        entities: ['operating system', 'kernel', 'process management', 'memory management', 'file system', 'system calls']
       },
       {
         pattern: /\bpaging\b/i,
@@ -467,6 +472,16 @@ export class ConversationMemoryManager {
         pattern: /\b(binary\s+search|sorting|algorithm|array|linked\s+list)\b/i,
         topic: 'Data Structures & Algorithms',
         entities: ['binary search', 'time complexity', 'divide and conquer', 'array']
+      },
+      {
+        pattern: /\b(dbms|database|sql|rdbms|transaction|acid)\b/i,
+        topic: 'Database Management Systems',
+        entities: ['DBMS', 'SQL', 'ACID', 'transactions', 'relational model', 'normalization']
+      },
+      {
+        pattern: /\b(networking|tcp|ip|osi\s+model|udp|http|dns)\b/i,
+        topic: 'Computer Networks',
+        entities: ['computer networks', 'OSI model', 'TCP/IP', 'packets', 'routing', 'protocols']
       }
     ];
 
@@ -488,21 +503,27 @@ export class ConversationMemoryManager {
       }
     }
 
-    // Fallback: If user asks a standalone question that defines a topic
-    if (!memory.activeTopic && (lower.includes(' ki?') || lower.includes(' what is ') || lower.startsWith('what is '))) {
+    // Dynamic Topic Switching: If user explicitly asks a standalone question defining a topic
+    const isTopicDefiningQuery = 
+      /^(what is|explain|define|tell me about)\s+/i.test(lower) ||
+      lower.startsWith('what is ') ||
+      lower.includes(' ki?') ||
+      lower.includes(' কাকে বলে') ||
+      lower.includes(' বলতে কি বোঝায়');
+
+    if (isTopicDefiningQuery) {
       const topicCandidate = raw
         .replace(/^(what is|explain|define|tell me about)\s+/i, '')
         .replace(/\s+(ki\?|ki|বলতে কি বোঝায়|কাকে বলে)\??$/i, '')
+        .replace(/[?।!.,]+$/, '')
         .trim();
       if (topicCandidate.length > 2 && topicCandidate.length < 50) {
-        if (memory.activeTopic && memory.activeTopic !== topicCandidate) {
+        if (memory.activeTopic && memory.activeTopic.toLowerCase() !== topicCandidate.toLowerCase()) {
           memory.previousTopic = memory.activeTopic;
           memory.activeSubtopic = null;
           memory.recentEntities = [topicCandidate];
-        } else {
-          if (!memory.recentEntities.includes(topicCandidate)) {
-            memory.recentEntities.push(topicCandidate);
-          }
+        } else if (!memory.activeTopic) {
+          memory.recentEntities = [topicCandidate];
         }
         memory.activeTopic = topicCandidate;
       }
@@ -543,11 +564,13 @@ export class ConversationMemoryManager {
           if (boldMatch) {
             title = boldMatch[1].trim();
           } else {
-            const sepMatch = raw.match(/^([^:\-–]+)[:\-–]/);
+            const sepMatch = raw.match(/^([^:\-–]+)(?::\s+|\s+[\-–]\s+)/);
             if (sepMatch) {
               title = sepMatch[1].trim();
+            } else if (raw.includes(':')) {
+              title = raw.split(':')[0].trim();
             } else {
-              title = raw.slice(0, 35).trim();
+              title = raw.slice(0, 45).trim();
             }
           }
           title = title.replace(/\*\*/g, '').trim();
